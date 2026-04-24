@@ -99,6 +99,13 @@ export default function WelcomeScreen({ navigation }) {
             >
               <Text style={styles.secondaryButtonText}>I already have an account</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.adminLink}
+              onPress={() => navigation.navigate('AdminLogin')}
+            >
+              <Text style={styles.adminLinkText}>Admin Portal</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -245,5 +252,17 @@ const styles = StyleSheet.create({
     color: '#333',
     fontSize: 16,
     fontWeight: '600',
+  },
+  adminLink: {
+    marginTop: 10,
+    alignItems: 'center',
+    padding: 10,
+  },
+  adminLinkText: {
+    color: '#999',
+    fontSize: 12,
+    textDecorationLine: 'underline',
+    fontWeight: '500',
+    letterSpacing: 1,
   },
 });

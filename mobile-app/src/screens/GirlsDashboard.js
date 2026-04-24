@@ -1,12 +1,21 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Dimensions } from 'react-native';
-import { AlertCircle, Shield, Navigation, Newspaper, Mic, Camera } from 'lucide-react-native';
+import React, { useContext } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Dimensions, Alert } from 'react-native';
+import { AlertCircle, Shield, Navigation, Newspaper, Mic, Camera, LogOut } from 'lucide-react-native';
 import { useSafetyMonitor } from '../hooks/useSafetyMonitor';
+import { AuthContext } from '../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
 export default function GirlsDashboard() {
   const { currentZone } = useSafetyMonitor();
+  const { logout, userData } = useContext(AuthContext);
+
+  const handleLogout = () => {
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Yes, Logout', style: 'destructive', onPress: logout }
+    ]);
+  };
 
   const handleSOS = () => {
     // Logic for SOS trigger
@@ -15,6 +24,15 @@ export default function GirlsDashboard() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <View style={styles.dashboardHeader}>
+        <View>
+          <Text style={styles.headerWelcome}>Hello, {userData?.fullName?.split(' ')[0] || 'User'}</Text>
+          <Text style={styles.headerTagline}>Sindhudurg Safety Hub</Text>
+        </View>
+        <TouchableOpacity style={styles.logoutIconButton} onPress={handleLogout}>
+          <LogOut color="#FF4444" size={24} />
+        </TouchableOpacity>
+      </View>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         
         {/* Status Card */}
@@ -85,6 +103,31 @@ const NewsCard = ({ title, content, time }) => (
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8f9fa' },
+  dashboardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  headerWelcome: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  headerTagline: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 2,
+  },
+  logoutIconButton: {
+    padding: 8,
+    backgroundColor: 'rgba(255, 68, 68, 0.05)',
+    borderRadius: 12,
+  },
   scrollContent: { padding: 20 },
   statusCard: {
     flexDirection: 'row',
