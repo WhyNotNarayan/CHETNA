@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -23,7 +23,9 @@ import {
   ShieldAlert,
   Clock,
   Moon,
-  Activity
+  Activity,
+  Trash2,
+  Square
 } from 'lucide-react-native';
 import api from '../utils/api';
 import * as Location from 'expo-location';
@@ -57,8 +59,14 @@ const AdminAddCrimeScreen = ({ navigation }) => {
   const [endTime, setEndTime] = useState('04:00 AM');
   const [loading, setLoading] = useState(false);
   const [mapModalVisible, setMapModalVisible] = useState(false);
-  const [activePoint, setActivePoint] = useState('START'); // 'START' or 'END'
+  const [activePoint, setActivePoint] = useState('START'); 
   const [suggestions, setSuggestions] = useState([]);
+  
+  // High-precision tracking state
+  const [recordedPath, setRecordedPath] = useState([]); 
+  const [isRecording, setIsRecording] = useState(false);
+  const watchSubscription = useRef(null);
+
   const [pickedLocation, setPickedLocation] = useState({
     latitude: 16.0270,
     longitude: 73.6876,
@@ -100,35 +108,96 @@ const AdminAddCrimeScreen = ({ navigation }) => {
     setSuggestions([]);
   };
 
-  const useLiveLocation = async () => {
-    try {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission denied', 'Allow GPS access to use live location.');
-        return;
+  useEffect(() => {
+    return () => {
+      if (watchSubscription.current) {
+        watchSubscription.current.remove();
       }
-      const loc = await Location.getCurrentPositionAsync({});
-      const newCoords = {
-        latitude: loc.coords.latitude,
-        longitude: loc.coords.longitude
-      };
+    };
+  }, []);
 
-      if (activePoint === 'START') {
-        setPickedLocation(newCoords);
-      } else {
-        setDestLocation(newCoords);
+  const smartSnap = async () => {
+    if (!pickedLocation || !destLocation) return;
+    
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${pickedLocation.longitude},${pickedLocation.latitude};${destLocation.longitude},${destLocation.latitude}?overview=full&geometries=geojson`;
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.routes && data.routes.length > 0) {
+        const coords = data.routes[0].geometry.coordinates.map(c => ({
+          latitude: c[1],
+          longitude: c[0]
+        }));
+        setRecordedPath(coords);
       }
-      Alert.alert('GPS Locked', `Updated ${activePoint} point to your current position.`);
     } catch (error) {
-      Alert.alert('GPS Error', 'Could not fetch live location.');
+      console.log('Snap error:', error);
     }
   };
 
-  const handleAddZone = async () => {
-    const finalName = mode === 'ROAD' ? `${fromLocation} To ${toLocation}` : areaName;
+  useEffect(() => {
+    if (mode === 'ROAD') {
+      smartSnap();
+    }
+  }, [pickedLocation, destLocation, mode]);
 
-    if (mode === 'ROAD' && (!fromLocation || !toLocation)) {
-      Alert.alert('Missing Info', 'Please provide both Starting and Destination points for the road.');
+  const toggleRecording = async () => {
+    if (isRecording) {
+      if (watchSubscription.current) {
+        watchSubscription.current.remove();
+        watchSubscription.current = null;
+      }
+      setIsRecording(false);
+      Alert.alert('Recording Stopped', `Path saved with ${recordedPath.length} points.`);
+    } else {
+      let { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'GPS permission is required to record roads.');
+        return;
+      }
+      
+      setRecordedPath([]); // Clear old path
+      setIsRecording(true);
+      
+      watchSubscription.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.High,
+          distanceInterval: 10, // Every 10 meters
+        },
+        (loc) => {
+          const newPoint = {
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude
+          };
+          setRecordedPath(prev => [...prev, newPoint]);
+          // Sync pickedLocation to start point
+          if (recordedPath.length === 0) setPickedLocation(newPoint);
+        }
+      );
+      Alert.alert('Recording Started', 'Drive the road now. The app will log your path locally.');
+    }
+  };
+
+  const addManualPoint = (coord) => {
+    setRecordedPath(prev => [...prev, coord]);
+    if (recordedPath.length === 0) setPickedLocation(coord);
+    else setDestLocation(coord);
+  };
+
+  const handleAddZone = async () => {
+    let finalFrom = fromLocation;
+    let finalTo = toLocation;
+
+    if (mode === 'ROAD' && recordedPath.length > 0) {
+      if (!finalFrom) finalFrom = 'Marked Start';
+      if (!finalTo) finalTo = 'Marked End';
+    }
+
+    const finalName = mode === 'ROAD' ? `${finalFrom} To ${finalTo}` : areaName;
+
+    if (mode === 'ROAD' && recordedPath.length === 0 && (!fromLocation || !toLocation)) {
+      Alert.alert('Missing Info', 'Please trace the road on the map or provide point names.');
       return;
     }
 
@@ -146,10 +215,11 @@ const AdminAddCrimeScreen = ({ navigation }) => {
     try {
       const response = await api.post('/admin/red-zones', {
         name: finalName,
-        latitude: pickedLocation.latitude,
-        longitude: pickedLocation.longitude,
-        destLatitude: mode === 'ROAD' ? destLocation.latitude : null,
-        destLongitude: mode === 'ROAD' ? destLocation.longitude : null,
+        latitude: mode === 'ROAD' && recordedPath.length > 0 ? recordedPath[0].latitude : pickedLocation.latitude,
+        longitude: mode === 'ROAD' && recordedPath.length > 0 ? recordedPath[0].longitude : pickedLocation.longitude,
+        destLatitude: mode === 'ROAD' && recordedPath.length > 0 ? recordedPath[recordedPath.length-1].latitude : (mode === 'ROAD' ? destLocation.latitude : null),
+        destLongitude: mode === 'ROAD' && recordedPath.length > 0 ? recordedPath[recordedPath.length-1].longitude : (mode === 'ROAD' ? destLocation.longitude : null),
+        pathData: mode === 'ROAD' && recordedPath.length > 0 ? JSON.stringify(recordedPath) : null,
         caseCount: parseInt(caseCount),
         crimeType,
         description,
@@ -238,6 +308,29 @@ const AdminAddCrimeScreen = ({ navigation }) => {
               <Text style={[styles.modeText, mode === 'ROAD' && styles.modeTextActive]}>Full Road</Text>
             </TouchableOpacity>
           </View>
+
+          {mode === 'ROAD' && (
+            <View style={[styles.recordingCard, isRecording && styles.recordingCardActive]}>
+              <View style={styles.recHeader}>
+                  <View style={[styles.recDot, isRecording && styles.recDotActive]} />
+                  <Text style={styles.recTitle}>{isRecording ? 'LIVE RECORDING ROAD...' : 'GPS Road Tracking'}</Text>
+              </View>
+              <Text style={styles.recDesc}>
+                {isRecording 
+                  ? `Logged ${recordedPath.length} pins. Keep driving to trace the curves.`
+                  : 'Drive and record the exact path of the dangerous road.'}
+              </Text>
+              <TouchableOpacity 
+                style={[styles.recBtn, isRecording ? styles.recBtnStop : styles.recBtnStart]}
+                onPress={toggleRecording}
+              >
+                {isRecording ? <Square size={16} color="#fff" /> : <Activity size={16} color="#000" />}
+                <Text style={[styles.recBtnText, { color: isRecording ? '#fff' : '#000' }]}>
+                  {isRecording ? 'STOP & SAVE PATH' : 'START LIVE DRIVE-TRACE'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {mode === 'AREA' ? (
             <View style={styles.inputGroup}>
@@ -438,43 +531,73 @@ const AdminAddCrimeScreen = ({ navigation }) => {
               </TouchableOpacity>
             </View>
 
-            <TouchableOpacity style={styles.gpsBtn} onPress={useLiveLocation}>
-              <MapPin size={18} color="#000" />
-              <Text style={styles.gpsBtnText}>Use My Current Location</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+              <TouchableOpacity style={[styles.gpsBtn, { flex: 1, backgroundColor: isRecording ? '#FF4444' : '#FFD700' }]} onPress={toggleRecording}>
+                <Activity size={18} color={isRecording ? '#fff' : '#000'} />
+                <Text style={[styles.gpsBtnText, { color: isRecording ? '#fff' : '#000' }]}>{isRecording ? 'Stop Recording' : 'Start GPS Trace'}</Text>
+              </TouchableOpacity>
+              
+              {recordedPath.length > 0 && (
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TouchableOpacity style={[styles.gpsBtn, { backgroundColor: '#333', borderBottomWidth: 0, paddingHorizontal: 15 }]} onPress={() => setRecordedPath(prev => prev.slice(0, -1))}>
+                    <ChevronLeft size={20} color="#FFD700" />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.gpsBtn, { backgroundColor: '#FF4444', borderBottomWidth: 0, paddingHorizontal: 15 }]} onPress={() => setRecordedPath([])}>
+                    <Trash2 size={20} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
             
             <View style={styles.mapFrame}>
                <MapView
                 style={StyleSheet.absoluteFillObject}
                 initialRegion={{
-                  ...(activePoint === 'START' ? pickedLocation : destLocation),
+                  ...(recordedPath.length > 0 ? recordedPath[recordedPath.length-1] : pickedLocation),
                   latitudeDelta: 0.05,
                   longitudeDelta: 0.05,
                 }}
                 onPress={(e) => {
-                  if (activePoint === 'START') setPickedLocation(e.nativeEvent.coordinate);
-                  else setDestLocation(e.nativeEvent.coordinate);
+                  if (mode === 'ROAD') {
+                    addManualPoint(e.nativeEvent.coordinate);
+                  } else {
+                    setPickedLocation(e.nativeEvent.coordinate);
+                  }
                 }}
                >
-                <Marker coordinate={pickedLocation} pinColor="#FFD700" title="Start Point" />
-                {mode === 'ROAD' && (
+                {recordedPath.length > 0 ? (
                   <>
-                    <Marker coordinate={destLocation} pinColor="#FF4444" title="End Point" />
                     <Polyline 
-                      coordinates={[pickedLocation, destLocation]}
+                      coordinates={recordedPath}
                       strokeColor="#FFD700"
-                      strokeWidth={3}
-                      lineDashPattern={[5, 5]}
+                      strokeWidth={6}
                     />
+                    <Marker coordinate={recordedPath[0]} title="Start">
+                        <View style={{ backgroundColor: '#FFD700', padding: 4, borderRadius: 10, borderWidth: 2, borderColor: '#000' }}>
+                           <MapPin size={12} color="#000" />
+                        </View>
+                    </Marker>
+                    <Marker coordinate={recordedPath[recordedPath.length-1]} title="Current End">
+                        <View style={{ backgroundColor: '#FF4444', padding: 4, borderRadius: 10, borderWidth: 2, borderColor: '#fff' }}>
+                           <MapPin size={12} color="#fff" />
+                        </View>
+                    </Marker>
+                  </>
+                ) : (
+                  <>
+                    <Marker coordinate={pickedLocation} pinColor="#FFD700" title="Point" />
+                    {mode === 'ROAD' && <Marker coordinate={destLocation} pinColor="#FF4444" title="End" />}
                   </>
                 )}
                </MapView>
                <View style={styles.mapTip}>
-                 <Text style={styles.mapTipText}>Adjusting: {activePoint} Point</Text>
+                 <Text style={styles.mapTipText}>
+                   {mode === 'ROAD' ? `Tracing: ${recordedPath.length} points logged` : 'Tap to set location'}
+                 </Text>
                </View>
             </View>
             <TouchableOpacity style={styles.confirmBtn} onPress={() => setMapModalVisible(false)}>
-              <Text style={styles.confirmText}>Confirm & Set Location</Text>
+              <Text style={styles.confirmText}>Confirm & Save Road Shape</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -511,6 +634,19 @@ const styles = StyleSheet.create({
   mapPreviewInfo: { flexDirection: 'row', alignItems: 'center' },
   coordinateText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
   coordinateSubText: { color: '#888', fontSize: 11 },
+  // Recording System Styles
+  recordingCard: { backgroundColor: '#111', borderRadius: 20, padding: 20, marginBottom: 25, borderWidth: 1, borderColor: '#333' },
+  recordingCardActive: { borderColor: '#FF4444', backgroundColor: '#1a0d0d' },
+  recHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#888', marginRight: 10 },
+  recDotActive: { backgroundColor: '#FF4444' },
+  recTitle: { color: '#FFF', fontSize: 14, fontWeight: 'bold' },
+  recDesc: { color: '#888', fontSize: 12, marginBottom: 15, lineHeight: 18 },
+  recBtn: { height: 45, borderRadius: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10 },
+  recBtnStart: { backgroundColor: '#FFD700' },
+  recBtnStop: { backgroundColor: '#FF4444' },
+  recBtnText: { fontWeight: 'bold' },
+
   changeBadge: { backgroundColor: '#FFD700', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   changeBadgeText: { color: '#000', fontSize: 10, fontWeight: 'bold' },
   pointDot: { width: 12, height: 12, borderRadius: 6 },
