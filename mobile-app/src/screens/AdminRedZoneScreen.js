@@ -133,16 +133,36 @@ const AdminRedZoneScreen = ({ navigation }) => {
         >
           {zones.map(zone => (
             <React.Fragment key={zone.id}>
-              {/* If it's a road (has dest coords OR has " To " in name), show Polyline */}
-              {(zone.destLatitude && zone.destLongitude) || zone.name.includes(' To ') ? (
+              {/* Prioritize high-precision path data for curves */}
+              {zone.pathData && JSON.parse(zone.pathData).length > 1 ? (
+                <>
+                  <Polyline 
+                    coordinates={JSON.parse(zone.pathData)}
+                    strokeColor={getRiskColor(zone.riskLevel, 0.9)}
+                    strokeWidth={6}
+                    lineJoin="round"
+                    lineCap="round"
+                  />
+                  {(() => {
+                    const path = JSON.parse(zone.pathData);
+                    return (
+                      <Marker coordinate={path[path.length - 1]}>
+                        <View style={[styles.customMarker, { backgroundColor: getRiskColor(zone.riskLevel) }]}>
+                            <MapPin color="#fff" size={10} />
+                        </View>
+                      </Marker>
+                    );
+                  })()}
+                </>
+              ) : (zone.destLatitude && zone.destLongitude) || (zone.name && zone.name.includes(' To ')) ? (
                 <>
                   <Polyline 
                     coordinates={[
                       { latitude: zone.latitude, longitude: zone.longitude },
                       { latitude: zone.destLatitude || (zone.latitude + 0.005), longitude: zone.destLongitude || (zone.longitude + 0.005) }
                     ]}
-                    strokeColor={getRiskColor(zone.riskLevel, 0.9)}
-                    strokeWidth={6}
+                    strokeColor={getRiskColor(zone.riskLevel, 0.8)}
+                    strokeWidth={5}
                   />
                   {zone.destLatitude && (
                     <Marker coordinate={{ latitude: zone.destLatitude, longitude: zone.destLongitude }}>
