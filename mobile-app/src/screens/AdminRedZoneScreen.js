@@ -175,7 +175,7 @@ const AdminRedZoneScreen = ({ navigation }) => {
               ) : (
                 <Circle
                   center={{ latitude: zone.latitude, longitude: zone.longitude }}
-                  radius={zone.radius || 500}
+                  radius={zone.radius || 200}
                   fillColor={getRiskColor(zone.riskLevel, 0.3)}
                   strokeColor={getRiskColor(zone.riskLevel, 0.7)}
                   strokeWidth={2}

@@ -59,6 +59,13 @@ const AdminDashboard = ({ navigation }) => {
 
   useEffect(() => {
     fetchStats();
+    
+    // Auto-refresh every 30 seconds for "Live" experience
+    const interval = setInterval(() => {
+      fetchStats();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const onRefresh = () => {
@@ -117,10 +124,12 @@ const AdminDashboard = ({ navigation }) => {
         <Text style={styles.sectionTitle}>Sindhudurg Live Bulletin 📡</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.newsScroller}>
           {news.map((item) => (
-            <View key={item.id} style={styles.newsCard}>
-              <View style={styles.newsTag}>
-                <Activity size={12} color="#FFD700" />
-                <Text style={styles.newsTagText}>LIVE UPDATE</Text>
+            <View key={item.id} style={[styles.newsCard, item.type === 'ACCIDENT' && { borderColor: '#FF4444' }]}>
+              <View style={[styles.newsTag, { backgroundColor: item.type === 'ACCIDENT' ? '#FF4444' : '#FFD700' }]}>
+                <Activity size={12} color={item.type === 'ACCIDENT' ? '#FFF' : '#000'} />
+                <Text style={[styles.newsTagText, { color: item.type === 'ACCIDENT' ? '#FFF' : '#000' }]}>
+                  {item.type || 'LIVE UPDATE'}
+                </Text>
               </View>
               <Text style={styles.newsTitle} numberOfLines={2}>{item.title}</Text>
               <Text style={styles.newsContent} numberOfLines={2}>{item.content}</Text>
@@ -141,10 +150,17 @@ const AdminDashboard = ({ navigation }) => {
         <Text style={styles.sectionTitle}>Management Console</Text>
         <View style={styles.menuList}>
           <MenuButton 
+            title="Post News Alert" 
+            subtitle="🚨 Send safety & accident news"
+            icon={Bell}
+            color="#FF4444"
+            onPress={() => navigation.navigate('AdminAddNews')}
+          />
+          <MenuButton 
             title="Add Crime Data" 
             subtitle="Register new incident in Sindhudurg"
             icon={ShieldAlert}
-            color="#FF4444"
+            color="#FFBB33"
             onPress={() => navigation.navigate('AdminAddCrime')}
           />
           <MenuButton 
@@ -168,13 +184,7 @@ const AdminDashboard = ({ navigation }) => {
             color="#00C851"
             onPress={() => Alert.alert('Coming Soon', 'Secret Cop Registry coming soon')}
           />
-          <MenuButton 
-            title="System Alerts" 
-            subtitle="Send mass notifications to users"
-            icon={Bell}
-            color="#4488FF"
-            onPress={() => Alert.alert('Coming Soon', 'Bulletin system is under development')}
-          />
+
         </View>
 
         <TouchableOpacity style={styles.reportsBanner}>
