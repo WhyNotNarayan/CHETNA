@@ -225,7 +225,7 @@ const AdminAddCrimeScreen = ({ navigation }) => {
         description,
         startTime,
         endTime,
-        radius: mode === 'ROAD' ? 2000 : 500
+        radius: mode === 'ROAD' ? 1500 : 200
       });
 
       if (response.data.success) {
