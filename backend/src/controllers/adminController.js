@@ -19,6 +19,7 @@ exports.addRedZone = async (req, res) => {
     const { 
       name, latitude, longitude, 
       destLatitude, destLongitude, 
+      pathData,
       riskLevel, caseCount, crimeType, 
       description, startTime, endTime, radius 
     } = req.body;
@@ -30,6 +31,7 @@ exports.addRedZone = async (req, res) => {
         longitude: parseFloat(longitude),
         destLatitude: destLatitude ? parseFloat(destLatitude) : null,
         destLongitude: destLongitude ? parseFloat(destLongitude) : null,
+        pathData: pathData || null,
         riskLevel: riskLevel || calculateRiskLevel(caseCount || 0),
         caseCount: parseInt(caseCount) || 0,
         crimeType,
