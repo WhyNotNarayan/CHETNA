@@ -13,7 +13,8 @@ import {
   Modal,
   Dimensions
 } from 'react-native';
-import MapView, { Marker, Polyline } from 'react-native-maps';
+import MapView, { Marker, Polyline, Polygon } from '../components/MapWrapper';
+import { SINDHUDURG_COORDS, SINDHUDURG_BOUNDARY } from '../utils/mapConstants';
 import { 
   ChevronLeft, 
   PlusCircle, 
@@ -434,11 +435,23 @@ const AdminAddCrimeScreen = ({ navigation }) => {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Quick Suggestions</Text>
             <View style={styles.tagRow}>
-              <QuickTag label="🐘 Wild Animals" icon={AlertTriangle} />
-              <QuickTag label="🌘 No Lights" icon={Moon} />
-              <QuickTag label="🚧 Construction" icon={ShieldAlert} />
-              <QuickTag label="🍷 Drunkards" icon={ShieldAlert} />
-              <QuickTag label="⚠️ Accident Prone" icon={Activity} />
+              {mode === 'ROAD' ? (
+                <>
+                  <QuickTag label="↪️ Sharp Turn" icon={AlertTriangle} />
+                  <QuickTag label="⚠️ Accident Prone" icon={Activity} />
+                  <QuickTag label="🌘 No Lights" icon={Moon} />
+                  <QuickTag label="🚧 Construction" icon={ShieldAlert} />
+                  <QuickTag label="🐘 Wild Animals" icon={AlertTriangle} />
+                </>
+              ) : (
+                <>
+                  <QuickTag label="🌊 Deep Water" icon={ShieldAlert} />
+                  <QuickTag label="🚫 Unsafe Swim" icon={ShieldAlert} />
+                  <QuickTag label="🍷 Drunkards" icon={ShieldAlert} />
+                  <QuickTag label="🌘 No Lights" icon={Moon} />
+                  <QuickTag label="🐘 Wild Animals" icon={AlertTriangle} />
+                </>
+              )}
             </View>
           </View>
 
@@ -484,17 +497,30 @@ const AdminAddCrimeScreen = ({ navigation }) => {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Type of Crime</Text>
+            <Text style={styles.label}>{mode === 'ROAD' ? 'Road Hazard / Crime Type' : 'Danger / Crime Type'}</Text>
             <View style={styles.inputWrapper}>
               <ShieldAlert size={20} color="#666" style={{ marginRight: 10 }} />
               <TextInput 
                 style={styles.input}
-                placeholder="e.g. Theft, Harassment"
+                placeholder={mode === 'ROAD' ? "e.g. Sharp Turn Ahead, Accidents" : "e.g. Deep Water Danger, Harassment"}
                 placeholderTextColor="#444"
                 value={crimeType}
                 onChangeText={setCrimeType}
               />
             </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+              {(mode === 'ROAD' 
+                ? ['Sharp Turn Ahead', 'Accident Prone', 'Blind Corner', 'No Streetlights']
+                : ['Deep Water Danger', 'Unsafe Swimming', 'Theft', 'Harassment']).map((sugg, i) => (
+                <TouchableOpacity 
+                  key={i} 
+                  style={[styles.quickSuggChip, crimeType === sugg && styles.quickSuggChipActive]}
+                  onPress={() => setCrimeType(sugg)}
+                >
+                  <Text style={[styles.quickSuggText, crimeType === sugg && styles.quickSuggTextActive]}>{sugg}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
 
           <View style={styles.inputGroup}>
@@ -552,11 +578,7 @@ const AdminAddCrimeScreen = ({ navigation }) => {
             <View style={styles.mapFrame}>
                <MapView
                 style={StyleSheet.absoluteFillObject}
-                initialRegion={{
-                  ...(recordedPath.length > 0 ? recordedPath[recordedPath.length-1] : pickedLocation),
-                  latitudeDelta: 0.05,
-                  longitudeDelta: 0.05,
-                }}
+                initialRegion={SINDHUDURG_COORDS}
                 onPress={(e) => {
                   if (mode === 'ROAD') {
                     addManualPoint(e.nativeEvent.coordinate);
@@ -565,6 +587,14 @@ const AdminAddCrimeScreen = ({ navigation }) => {
                   }
                 }}
                >
+                {/* Sindhudurg District Boundary Outline */}
+                <Polygon
+                  coordinates={SINDHUDURG_BOUNDARY}
+                  strokeColor="rgba(0, 0, 0, 0.6)"
+                  strokeWidth={3}
+                  fillColor="rgba(0, 0, 0, 0.05)"
+                  zIndex={0}
+                />
                 {recordedPath.length > 0 ? (
                   <>
                     <Polyline 
@@ -687,6 +717,10 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   gpsBtnText: { color: '#000', fontWeight: 'bold', marginLeft: 10 },
+  quickSuggChip: { backgroundColor: '#111', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#333', marginRight: 8 },
+  quickSuggChipActive: { backgroundColor: '#FFD700', borderColor: '#FFD700' },
+  quickSuggText: { color: '#888', fontSize: 12, fontWeight: 'bold' },
+  quickSuggTextActive: { color: '#000' },
 });
 
 export default AdminAddCrimeScreen;

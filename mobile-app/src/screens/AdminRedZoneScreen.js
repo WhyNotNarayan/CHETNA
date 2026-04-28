@@ -12,19 +12,15 @@ import {
   Modal,
   Dimensions
 } from 'react-native';
-import MapView, { Marker, Circle, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Circle, Polyline, Polygon } from '../components/MapWrapper';
 import { MapPin, Plus, Trash2, ShieldAlert, ChevronLeft, Calendar, FileText, Info } from 'lucide-react-native';
 import api from '../utils/api';
 import * as Location from 'expo-location';
+import { SINDHUDURG_COORDS, SINDHUDURG_BOUNDARY } from '../utils/mapConstants';
 
 const { width, height } = Dimensions.get('window');
 
-const SindhudurgCoords = {
-  latitude: 16.0270,
-  longitude: 73.6876,
-  latitudeDelta: 0.5,
-  longitudeDelta: 0.5,
-};
+// Removed local coordinate definitions as they are now in mapConstants.js
 
 const AdminRedZoneScreen = ({ navigation }) => {
   const [zones, setZones] = useState([]);
@@ -127,10 +123,18 @@ const AdminRedZoneScreen = ({ navigation }) => {
         <MapView
           ref={mapRef}
           style={styles.map}
-          initialRegion={SindhudurgCoords}
+          initialRegion={SINDHUDURG_COORDS}
           onLongPress={handleMapPress}
           userInterfaceStyle="dark"
         >
+          {/* Sindhudurg District Boundary Outline */}
+          <Polygon
+            coordinates={SINDHUDURG_BOUNDARY}
+            strokeColor="rgba(0, 0, 0, 0.8)"
+            strokeWidth={4}
+            fillColor="rgba(0, 0, 0, 0.08)"
+            zIndex={0}
+          />
           {zones.map(zone => (
             <React.Fragment key={zone.id}>
               {/* Prioritize high-precision path data for curves */}
