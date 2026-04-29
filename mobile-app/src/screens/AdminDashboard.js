@@ -7,7 +7,8 @@ import {
   StyleSheet, 
   SafeAreaView,
   RefreshControl,
-  Dimensions,
+  useWindowDimensions,
+  Platform,
   Alert
 } from 'react-native';
 import { 
@@ -24,9 +25,10 @@ import {
 import api from '../utils/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const { width } = Dimensions.get('window');
-
 const AdminDashboard = ({ navigation }) => {
+  const { width } = useWindowDimensions();
+  const isDesktop = width > 768;
+
   const [stats, setStats] = useState({
     totalUsers: 0,
     totalSOS: 0,
@@ -39,7 +41,6 @@ const AdminDashboard = ({ navigation }) => {
 
   const fetchStats = async () => {
     try {
-      // Fixed routes to include full path if necessary
       const response = await api.get('/admin/analytics');
       if (response.data.success) {
         setStats(response.data.stats);
@@ -59,12 +60,7 @@ const AdminDashboard = ({ navigation }) => {
 
   useEffect(() => {
     fetchStats();
-    
-    // Auto-refresh every 30 seconds for "Live" experience
-    const interval = setInterval(() => {
-      fetchStats();
-    }, 30000);
-
+    const interval = setInterval(fetchStats, 30000);
     return () => clearInterval(interval);
   }, []);
 
@@ -79,7 +75,10 @@ const AdminDashboard = ({ navigation }) => {
   };
 
   const StatCard = ({ title, value, icon: Icon, color }) => (
-    <View style={styles.statCard}>
+    <View style={[
+      styles.statCard, 
+      { width: isDesktop ? (Math.min(width, 1200) - 80) / 4 : (width - 50) / 2 }
+    ]}>
       <View style={[styles.statIconContainer, { backgroundColor: `${color}15` }]}>
         <Icon size={24} color={color} />
       </View>
@@ -91,7 +90,10 @@ const AdminDashboard = ({ navigation }) => {
   );
 
   const MenuButton = ({ title, subtitle, icon: Icon, color, onPress }) => (
-    <TouchableOpacity style={styles.menuButton} onPress={onPress}>
+    <TouchableOpacity 
+      style={[styles.menuButton, isDesktop && styles.menuButtonDesktop]} 
+      onPress={onPress}
+    >
       <View style={[styles.menuIconContainer, { backgroundColor: `${color}15` }]}>
         <Icon size={24} color={color} />
       </View>
@@ -106,94 +108,102 @@ const AdminDashboard = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.welcomeText}>Welcome Admin,</Text>
-          <Text style={styles.brandText}>Sindhudurg Command Center</Text>
+        <View style={styles.headerContent}>
+          <View>
+            <Text style={styles.welcomeText}>Welcome Admin,</Text>
+            <Text style={styles.brandText}>Sindhudurg Command Center</Text>
+          </View>
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+            <LogOut size={20} color="#FF4444" />
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-          <LogOut size={20} color="#FF4444" />
-        </TouchableOpacity>
       </View>
 
       <ScrollView 
+        style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={true}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FFD700" />
         }
       >
-        <Text style={styles.sectionTitle}>Sindhudurg Live Bulletin 📡</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.newsScroller}>
-          {news.map((item) => (
-            <View key={item.id} style={[styles.newsCard, item.type === 'ACCIDENT' && { borderColor: '#FF4444' }]}>
-              <View style={[styles.newsTag, { backgroundColor: item.type === 'ACCIDENT' ? '#FF4444' : '#FFD700' }]}>
-                <Activity size={12} color={item.type === 'ACCIDENT' ? '#FFF' : '#000'} />
-                <Text style={[styles.newsTagText, { color: item.type === 'ACCIDENT' ? '#FFF' : '#000' }]}>
-                  {item.type || 'LIVE UPDATE'}
-                </Text>
+        <View style={styles.maxContainer}>
+          <Text style={styles.sectionTitle}>Sindhudurg Live Bulletin 📡</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.newsScroller}>
+            {news.map((item) => (
+              <View key={item.id} style={[styles.newsCard, item.type === 'ACCIDENT' && { borderColor: '#FF4444' }]}>
+                <View style={[styles.newsTag, { backgroundColor: item.type === 'ACCIDENT' ? '#FF4444' : '#FFD700' }]}>
+                  <Activity size={12} color={item.type === 'ACCIDENT' ? '#FFF' : '#000'} />
+                  <Text style={[styles.newsTagText, { color: item.type === 'ACCIDENT' ? '#FFF' : '#000' }]}>
+                    {item.type || 'LIVE UPDATE'}
+                  </Text>
+                </View>
+                <Text style={styles.newsTitle} numberOfLines={2}>{item.title}</Text>
+                <Text style={styles.newsContent} numberOfLines={2}>{item.content}</Text>
+                <Text style={styles.newsSource}>via {item.source}</Text>
               </View>
-              <Text style={styles.newsTitle} numberOfLines={2}>{item.title}</Text>
-              <Text style={styles.newsContent} numberOfLines={2}>{item.content}</Text>
-              <Text style={styles.newsSource}>via {item.source}</Text>
-            </View>
-          ))}
-          {news.length === 0 && <Text style={styles.emptyText}>Scanning for fresh updates...</Text>}
-        </ScrollView>
+            ))}
+            {news.length === 0 && <Text style={styles.emptyText}>Scanning for fresh updates...</Text>}
+          </ScrollView>
 
-        <Text style={styles.sectionTitle}>Real-time Insights</Text>
-        <View style={styles.statsGrid}>
-          <StatCard title="Total Users" value={stats.totalUsers} icon={Users} color="#4488FF" />
-          <StatCard title="SOS Alerts" value={stats.totalSOS} icon={ShieldAlert} color="#FF4444" />
-          <StatCard title="Active SOS" value={stats.activeSOS} icon={Activity} color="#00C851" />
-          <StatCard title="Red Zones" value={stats.redZonesCount} icon={ShieldAlert} color="#FFBB33" />
-        </View>
-
-        <Text style={styles.sectionTitle}>Management Console</Text>
-        <View style={styles.menuList}>
-          <MenuButton 
-            title="Post News Alert" 
-            subtitle="🚨 Send safety & accident news"
-            icon={Bell}
-            color="#FF4444"
-            onPress={() => navigation.navigate('AdminAddNews')}
-          />
-          <MenuButton 
-            title="Add Crime Data" 
-            subtitle="Register new incident in Sindhudurg"
-            icon={ShieldAlert}
-            color="#FFBB33"
-            onPress={() => navigation.navigate('AdminAddCrime')}
-          />
-          <MenuButton 
-            title="Live Zone Map" 
-            subtitle="Visual Sindhudurg Crime Heatmap"
-            icon={MapIcon}
-            color="#FFBB33"
-            onPress={() => navigation.navigate('AdminRedZones')}
-          />
-          <MenuButton 
-            title="SOS Monitoring" 
-            subtitle="Track and Resolve Emergency cases"
-            icon={ShieldAlert}
-            color="#00C851"
-            onPress={() => Alert.alert('Coming Soon', 'SOS Monitoring coming soon')}
-          />
-          <MenuButton 
-            title="Secret Cop Registry" 
-            subtitle="Manage authorized helpers"
-            icon={Users}
-            color="#00C851"
-            onPress={() => Alert.alert('Coming Soon', 'Secret Cop Registry coming soon')}
-          />
-
-        </View>
-
-        <TouchableOpacity style={styles.reportsBanner}>
-          <TrendingUp size={24} color="#FFF" />
-          <View style={styles.bannerText}>
-            <Text style={styles.bannerTitle}>Generate Analytics Report</Text>
-            <Text style={styles.bannerSubtitle}>Monthly crime trends for Sindhudurg Police</Text>
+          <Text style={styles.sectionTitle}>Real-time Insights</Text>
+          <View style={styles.statsGrid}>
+            <StatCard title="Total Users" value={stats.totalUsers} icon={Users} color="#4488FF" />
+            <StatCard title="SOS Alerts" value={stats.totalSOS} icon={ShieldAlert} color="#FF4444" />
+            <StatCard title="Active SOS" value={stats.activeSOS} icon={Activity} color="#00C851" />
+            <StatCard title="Red Zones" value={stats.redZonesCount} icon={ShieldAlert} color="#FFBB33" />
           </View>
-        </TouchableOpacity>
+
+          <Text style={styles.sectionTitle}>Management Console</Text>
+          <View style={[styles.menuList, isDesktop && styles.menuListDesktop]}>
+            <MenuButton 
+              title="Post News Alert" 
+              subtitle="🚨 Send safety news"
+              icon={Bell}
+              color="#FF4444"
+              onPress={() => navigation.navigate('AdminAddNews')}
+            />
+            <MenuButton 
+              title="Add Crime Data" 
+              subtitle="Register new incident"
+              icon={ShieldAlert}
+              color="#FFBB33"
+              onPress={() => navigation.navigate('AdminAddCrime')}
+            />
+            <MenuButton 
+              title="Live Zone Map" 
+              subtitle="Crime Heatmap"
+              icon={MapIcon}
+              color="#FFD700"
+              onPress={() => navigation.navigate('AdminRedZones')}
+            />
+            <MenuButton 
+              title="SOS Monitoring" 
+              subtitle="Emergency cases"
+              icon={ShieldAlert}
+              color="#00C851"
+              onPress={() => Alert.alert('Coming Soon', 'SOS Monitoring coming soon')}
+            />
+            <MenuButton 
+              title="Manage Secret Cops" 
+              subtitle="Verify volunteers"
+              icon={Users}
+              color="#FFD700"
+              onPress={() => navigation.navigate('AdminManageSecretCops')}
+            />
+          </View>
+
+          <TouchableOpacity style={[styles.reportsBanner, isDesktop && styles.reportsBannerDesktop]}>
+            <TrendingUp size={24} color="#FFF" />
+            <View style={styles.bannerText}>
+              <Text style={styles.bannerTitle}>Generate Analytics Report</Text>
+              <Text style={styles.bannerSubtitle}>Monthly trends for Sindhudurg Police Headquarters</Text>
+            </View>
+          </TouchableOpacity>
+          
+          {/* Brute force spacer for web scrolling issues */}
+          <View style={{ height: 150 }} />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -202,130 +212,168 @@ const AdminDashboard = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F0F0F',
+    backgroundColor: '#0A0A0A',
+    // Force scrolling on web
+    overflowY: Platform.OS === 'web' ? 'auto' : 'hidden',
   },
   header: {
+    backgroundColor: '#111',
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
+    paddingVertical: 15,
+    zIndex: 10, // Keep header on top
+  },
+  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#151515',
-    borderBottomWidth: 1,
-    borderBottomColor: '#222',
+    paddingHorizontal: 20,
+    maxWidth: 1200,
+    alignSelf: 'center',
+    width: '100%',
   },
   welcomeText: {
     color: '#888',
-    fontSize: 14,
+    fontSize: 12,
   },
   brandText: {
     color: '#FFD700',
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
   logoutBtn: {
     padding: 10,
     backgroundColor: 'rgba(255, 68, 68, 0.1)',
-    borderRadius: 10,
+    borderRadius: 12,
   },
   scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 100, // Extra space at the bottom for scrolling
+  },
+  maxContainer: {
+    maxWidth: 1200,
+    alignSelf: 'center',
+    width: '100%',
     padding: 20,
   },
   sectionTitle: {
     color: '#FFF',
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
     marginBottom: 15,
-    marginTop: 10,
+    marginTop: 20,
   },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
+    gap: 10,
   },
   statCard: {
-    width: (width - 60) / 2,
-    backgroundColor: '#1A1A1A',
-    padding: 15,
-    borderRadius: 16,
-    marginBottom: 20,
+    backgroundColor: '#151515',
+    padding: 20,
+    borderRadius: 20,
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#222',
   },
   statIconContainer: {
-    padding: 10,
-    borderRadius: 12,
-    marginRight: 12,
+    padding: 12,
+    borderRadius: 15,
+    marginRight: 15,
   },
   statValue: {
     color: '#FFF',
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
   },
   statTitle: {
     color: '#888',
-    fontSize: 12,
+    fontSize: 13,
   },
   menuList: {
-    backgroundColor: '#1A1A1A',
-    borderRadius: 20,
-    padding: 10,
+    backgroundColor: '#151515',
+    borderRadius: 24,
+    overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#222',
+  },
+  menuListDesktop: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 10,
+    gap: 10,
   },
   menuButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 15,
+    padding: 20,
     borderBottomWidth: 1,
     borderBottomColor: '#222',
   },
+  menuButtonDesktop: {
+    width: '49%',
+    borderBottomWidth: 0,
+    backgroundColor: '#1A1A1A',
+    borderRadius: 15,
+  },
   menuIconContainer: {
-    padding: 12,
-    borderRadius: 12,
-    marginRight: 15,
+    padding: 14,
+    borderRadius: 16,
+    marginRight: 18,
   },
   menuTextContainer: {
     flex: 1,
   },
   menuTitle: {
     color: '#FFF',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: 'bold',
   },
   menuSubtitle: {
     color: '#666',
-    fontSize: 12,
+    fontSize: 13,
+    marginTop: 2,
   },
   reportsBanner: {
-    backgroundColor: '#1a49a8',
-    marginTop: 25,
-    padding: 20,
-    borderRadius: 20,
+    backgroundColor: '#1D4ED8',
+    marginTop: 30,
+    padding: 25,
+    borderRadius: 24,
     flexDirection: 'row',
     alignItems: 'center',
+    shadowColor: '#1D4ED8',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  reportsBannerDesktop: {
+    padding: 35,
   },
   bannerText: {
-    marginLeft: 15,
+    marginLeft: 20,
   },
   bannerTitle: {
     color: '#FFF',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
   },
   bannerSubtitle: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
+    marginTop: 4,
   },
   newsScroller: {
-    marginBottom: 25,
+    marginBottom: 10,
   },
   newsCard: {
-    width: width * 0.75,
-    backgroundColor: '#1A1A1A',
+    width: 300,
+    backgroundColor: '#151515',
     borderRadius: 20,
-    padding: 15,
+    padding: 18,
     marginRight: 15,
     borderWidth: 1,
     borderColor: '#333',
@@ -333,35 +381,32 @@ const styles = StyleSheet.create({
   newsTag: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 215, 0, 0.1)',
     alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginBottom: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    marginBottom: 12,
   },
   newsTagText: {
-    color: '#FFD700',
-    fontSize: 10,
-    fontWeight: '800',
-    marginLeft: 5,
+    fontSize: 11,
+    fontWeight: 'bold',
+    marginLeft: 6,
   },
   newsTitle: {
     color: '#FFF',
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: 'bold',
-    marginBottom: 5,
+    marginBottom: 8,
   },
   newsContent: {
-    color: '#888',
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 10,
+    color: '#999',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 12,
   },
   newsSource: {
     color: '#555',
     fontSize: 11,
-    fontWeight: '600',
     fontStyle: 'italic',
   },
   emptyText: {

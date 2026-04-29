@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import { 
   View, 
   Text, 
@@ -17,12 +17,15 @@ import { MapPin, Plus, Trash2, ShieldAlert, ChevronLeft, Calendar, FileText, Inf
 import api from '../utils/api';
 import * as Location from 'expo-location';
 import { SINDHUDURG_COORDS, SINDHUDURG_BOUNDARY } from '../utils/mapConstants';
+import { AuthContext } from '../context/AuthContext';
 
 const { width, height } = Dimensions.get('window');
 
 // Removed local coordinate definitions as they are now in mapConstants.js
 
 const AdminRedZoneScreen = ({ navigation }) => {
+  const { userData } = useContext(AuthContext);
+  const isAdmin = userData?.role === 'ADMIN';
   const [zones, setZones] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
@@ -52,6 +55,7 @@ const AdminRedZoneScreen = ({ navigation }) => {
   }, []);
 
   const handleMapPress = (e) => {
+    if (!isAdmin) return;
     const coords = e.nativeEvent.coordinate;
     setSelectedCoords(coords);
     setModalVisible(true);
@@ -115,7 +119,7 @@ const AdminRedZoneScreen = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <ChevronLeft size={24} color="#FFF" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Sindhudurg Map Control</Text>
+        <Text style={styles.headerTitle}>{isAdmin ? 'Sindhudurg Map Control' : 'Sindhudurg Live Map'}</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -198,12 +202,14 @@ const AdminRedZoneScreen = ({ navigation }) => {
           ))}
         </MapView>
         
-        <View style={styles.mapOverlay}>
-          <View style={styles.instructionBox}>
-            <Info size={16} color="#FFD700" />
-            <Text style={styles.instructionText}>Long-press on map to mark new crime spot</Text>
+        {isAdmin && (
+          <View style={styles.mapOverlay}>
+            <View style={styles.instructionBox}>
+              <Info size={16} color="#FFD700" />
+              <Text style={styles.instructionText}>Long-press on map to mark new crime spot</Text>
+            </View>
           </View>
-        </View>
+        )}
       </View>
 
       <View style={styles.listSection}>
@@ -224,9 +230,11 @@ const AdminRedZoneScreen = ({ navigation }) => {
                                 {item.startTime && ` • 🕒 ${item.startTime}-${item.endTime}`}
                             </Text>
                         </View>
-                        <TouchableOpacity onPress={() => handleDelete(item.id)}>
-                            <Trash2 size={18} color="#444" />
-                        </TouchableOpacity>
+                        {isAdmin && (
+                          <TouchableOpacity onPress={() => handleDelete(item.id)}>
+                              <Trash2 size={18} color="#444" />
+                          </TouchableOpacity>
+                        )}
                     </View>
                 )}
                 ListEmptyComponent={<Text style={styles.emptyText}>No data for this area.</Text>}
