@@ -95,3 +95,35 @@ exports.getAnalytics = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to fetch analytics' });
   }
 };
+
+exports.getPendingSecretCops = async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: {
+        role: 'BOY',
+        isVerified: false,
+        profession: { not: null }
+      }
+    });
+    res.json({ success: true, users });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to fetch pending applications' });
+  }
+};
+
+exports.verifySecretCop = async (req, res) => {
+  try {
+    const { userId, action } = req.body;
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        isVerified: action === 'approve'
+      }
+    });
+
+    res.json({ success: true, message: `User ${action === 'approve' ? 'verified' : 'rejected'}` });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to verify user' });
+  }
+};
