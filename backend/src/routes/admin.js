@@ -9,5 +9,7 @@ router.post('/red-zones', adminController.addRedZone);
 router.get('/red-zones', adminController.getRedZones);
 router.delete('/red-zones/:id', adminController.deleteRedZone);
 router.get('/analytics', adminController.getAnalytics);
+router.get('/pending-secret-cops', adminController.getPendingSecretCops);
+router.post('/verify-secret-cop', adminController.verifySecretCop);
 
 module.exports = router;
