@@ -14,8 +14,7 @@ const LanguageSelectScreen = ({ navigation }) => {
 
   const selectLanguage = async (lang) => {
     await changeLanguage(lang);
-    await AsyncStorage.setItem('has_selected_lang', 'true');
-    navigation.replace('PrivacyConsent');
+    navigation.navigate('ThemeSelect');
   };
 
   return (
