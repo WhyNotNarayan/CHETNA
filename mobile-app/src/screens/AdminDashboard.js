@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { 
   View, 
   Text, 
@@ -24,8 +24,10 @@ import {
 } from 'lucide-react-native';
 import api from '../utils/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AuthContext } from '../context/AuthContext';
 
 const AdminDashboard = ({ navigation }) => {
+  const { logout } = useContext(AuthContext);
   const { width } = useWindowDimensions();
   const isDesktop = width > 768;
 
@@ -70,8 +72,7 @@ const AdminDashboard = ({ navigation }) => {
   };
 
   const handleLogout = async () => {
-    await AsyncStorage.clear();
-    navigation.replace('Welcome');
+    await logout();
   };
 
   const StatCard = ({ title, value, icon: Icon, color }) => (
