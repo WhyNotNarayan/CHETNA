@@ -47,12 +47,28 @@ export default function RegisterScreen({ navigation }) {
   const handleLocateMe = async () => {
     setIsLocating(true);
     try {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Denied', 'Please grant location permission to auto-fill address.');
+      // 1. Check current status
+      const { status: existingStatus } = await Location.getForegroundPermissionsAsync();
+      let finalStatus = existingStatus;
+
+      // 2. If not granted, request it
+      if (existingStatus !== 'granted') {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        finalStatus = status;
+      }
+
+      // 3. If still not granted, tell the user how to fix it
+      if (finalStatus !== 'granted') {
+        Alert.alert(
+          'Location Permission Required',
+          'To auto-fill your address, please enable location permissions in your phone settings for Chetna.',
+          [{ text: 'OK' }]
+        );
         setIsLocating(false);
         return;
       }
+
+      // 4. Get position if granted
       let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       let reverse = await Location.reverseGeocodeAsync({
         latitude: location.coords.latitude,
@@ -61,11 +77,16 @@ export default function RegisterScreen({ navigation }) {
       
       if (reverse.length > 0) {
         const place = reverse[0];
-        const formattedAddress = [place.name, place.street, place.city, place.region].filter(Boolean).join(', ');
+        // More robust address formatting
+        const street = place.street || place.name || '';
+        const city = place.city || place.subregion || '';
+        const region = place.region || '';
+        const formattedAddress = [street, city, region].filter(Boolean).join(', ');
         setAddress(formattedAddress);
       }
     } catch (error) {
-      Alert.alert('Location Error', 'Unable to fetch your live location right now.');
+      console.warn("Location Error:", error);
+      Alert.alert('Location Error', 'Unable to fetch your live location right now. Please check your GPS settings.');
     }
     setIsLocating(false);
   };
