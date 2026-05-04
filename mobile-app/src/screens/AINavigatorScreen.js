@@ -4,7 +4,7 @@ import {
   SafeAreaView, Alert, ActivityIndicator, ScrollView,
   KeyboardAvoidingView, Platform, Dimensions, StatusBar
 } from 'react-native';
-import MapView, { Marker, Polyline, Circle } from 'react-native-maps';
+import MapView, { Marker, Polyline, Circle } from '../components/MapWrapper';
 import * as Location from 'expo-location';
 import * as Speech from 'expo-speech';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -103,6 +103,17 @@ export default function AINavigatorScreen({ navigation }) {
     fetchDangerZones();
     return () => stopNavigation();
   }, []);
+
+  // 🎯 NEW: Debounced Live Search
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      if (searchQuery.trim().length > 2 && !destination) {
+        handleSearch();
+      }
+    }, 600);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
 
   const initLocation = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
@@ -291,11 +302,10 @@ export default function AINavigatorScreen({ navigation }) {
           {!isNavigating && (
             <View style={styles.searchContainer}>
               <View style={styles.searchBar}>
-                <Search color="#888" size={18} />
-                <TextInput style={styles.searchInput} placeholder={t('search_dest')} placeholderTextColor="#888" value={searchQuery} onChangeText={setSearchQuery} onSubmitEditing={handleSearch} />
+                {isSearching ? <ActivityIndicator color="#888" size="small" /> : <Search color="#888" size={18} />}
+                <TextInput style={styles.searchInput} placeholder={t('search_dest')} placeholderTextColor="#888" value={searchQuery} onChangeText={(txt) => { setSearchQuery(txt); if (destination) setDestination(null); }} />
                 {searchQuery.length > 0 && <TouchableOpacity onPress={() => { setSearchQuery(''); setSearchResults([]); setDestination(null); setFilteredDangers([]); }}><X color="#888" size={18} /></TouchableOpacity>}
               </View>
-              <TouchableOpacity style={styles.searchBtn} onPress={handleSearch} disabled={isSearching}>{isSearching ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.searchBtnText}>Go</Text>}</TouchableOpacity>
             </View>
           )}
           {searchResults.length > 0 && (
