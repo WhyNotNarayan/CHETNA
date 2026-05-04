@@ -91,18 +91,7 @@ export default function BoysDashboard({ navigation }) {
   };
 
   const startAINavigator = () => {
-    const msg = lang === 'mr' 
-      ? 'AI सुरक्षा नेव्हिगेटर सक्रिय. कुडाळकडे जात आहे. सावधान: १०० मीटरवर तीव्र वळण आहे.'
-      : lang === 'hi'
-      ? 'AI सुरक्षा नेविगेटर सक्रिय। कुडाल की ओर जा रहे हैं। सावधान: 100 मीटर में तीखा मोड़ है।'
-      : 'AI Safety Navigator active. Driving towards Kudal. Caution: Sharp turn ahead in 100 meters.';
-    
-    Alert.alert(t('ai_navigator'), t('voice_alerts_active'));
-    Speech.speak(msg, {
-      language: lang === 'mr' ? 'hi-IN' : lang === 'hi' ? 'hi-IN' : 'en-US',
-      pitch: 1.0,
-      rate: 0.9
-    });
+    navigation.navigate('AINavigator');
   };
 
   return (
