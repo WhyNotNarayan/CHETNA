@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, Alert, Image } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, SafeAreaView, KeyboardAvoidingView, Platform, Alert, Image, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AuthContext } from '../context/AuthContext';
 import api from '../utils/api';
@@ -9,12 +9,13 @@ import { PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
 
 export default function LoginScreen({ navigation }) {
   const recaptchaVerifier = React.useRef(null);
-  const [verificationId, setVerificationId] = useState(null);
   const { login } = useContext(AuthContext);
+  const [verificationId, setVerificationId] = useState(null);
   const [phone, setPhone] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [otp, setOtp] = useState('');
   const [timer, setTimer] = useState(60);
+  const [loading, setLoading] = useState(false);
 
   React.useEffect(() => {
     let interval;
@@ -26,48 +27,65 @@ export default function LoginScreen({ navigation }) {
 
   const handleSendOTP = async () => {
     if (phone.length < 10) {
-      Alert.alert('Error', 'Please enter a valid mobile number');
+      Alert.alert('Invalid Number', 'Please enter a valid 10-digit mobile number');
       return;
     }
     
+    setLoading(true);
     try {
       const phoneProvider = new PhoneAuthProvider(auth);
       const formattedPhone = phone.startsWith('+') ? phone : `+91${phone}`;
+      
+      // Clear previous ID before sending new one
+      setVerificationId(null);
+      setOtp('');
+
       const vId = await phoneProvider.verifyPhoneNumber(formattedPhone, recaptchaVerifier.current);
       
       setVerificationId(vId);
       setOtpSent(true);
       setTimer(60);
-      Alert.alert('Success', 'OTP Sent to your Phone!');
+      Alert.alert('OTP Sent', 'A 6-digit code has been sent to your phone.');
     } catch (error) {
-      Alert.alert('Error', error.message || 'Failed to send OTP');
+      console.error('OTP Send Error:', error);
+      Alert.alert('Send Failed', 'Could not send OTP. Please check your network or try again later.');
     }
+    setLoading(false);
   };
 
   const handleVerify = async () => {
     if (otp.length < 6) {
-      Alert.alert('Error', 'Please enter a valid 6 digit OTP');
+      Alert.alert('Incomplete OTP', 'Please enter all 6 digits of the code.');
+      return;
+    }
+
+    if (!verificationId) {
+      Alert.alert('Session Expired', 'The verification session has expired. Please request a new OTP.');
+      setOtpSent(false);
       return;
     }
     
+    setLoading(true);
     try {
-      // 1. Verify with Firebase directly over SMS
+      // 1. Verify with Firebase
       const credential = PhoneAuthProvider.credential(verificationId, otp);
       await signInWithCredential(auth, credential);
 
-      // 2. Alert Node.js Backend to generate secure session
+      // 2. Auth with our Backend
       const response = await api.post('/auth/login', { phone });
       
       if (response.data.success) {
         await login(response.data.token, response.data.user);
       }
     } catch (error) {
-      if (error.response) {
-        Alert.alert('Login Failed', error.response.data.message);
-      } else {
-        Alert.alert('SMS Error', error.message);
-      }
+      console.error('Verification Error:', error);
+      let msg = 'Invalid OTP. Please try again.';
+      if (error.code === 'auth/code-expired') msg = 'OTP has expired. Please request a new one.';
+      if (error.code === 'auth/invalid-verification-code') msg = 'Incorrect OTP code. Please check and try again.';
+      
+      Alert.alert('Verification Failed', msg);
     }
+    setLoading(false);
   };
 
   return (
@@ -127,16 +145,20 @@ export default function LoginScreen({ navigation }) {
           )}
 
           <TouchableOpacity 
-            style={[styles.primaryButton, (!otpSent && phone.length !== 10) && { opacity: 0.5 }]}
+            style={[styles.primaryButton, ((!otpSent && phone.length !== 10) || loading) && { opacity: 0.5 }]}
             onPress={otpSent ? handleVerify : handleSendOTP}
-            disabled={!otpSent && phone.length !== 10}
+            disabled={(!otpSent && phone.length !== 10) || loading}
           >
             <LinearGradient 
               colors={['#f92b7c', '#791880']} 
               start={{x: 0, y: 0}} end={{x: 1, y: 0}}
               style={styles.gradientButton}
             >
-              <Text style={styles.primaryButtonText}>{otpSent ? 'Verify & Login' : 'Send OTP'}</Text>
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.primaryButtonText}>{otpSent ? 'Verify & Login' : 'Send OTP'}</Text>
+              )}
             </LinearGradient>
           </TouchableOpacity>
 
