@@ -32,7 +32,14 @@ export const translations = {
     rescue: "RESCUE",
     settings: "Settings",
     dark_mode: "Dark Mode",
-    change_lang: "Change Language"
+    change_lang: "Change Language",
+    search_dest: "Search destination...",
+    calc_route: "Calculating safest route...",
+    start_nav: "START NAVIGATION",
+    stop_nav: "STOP NAVIGATION",
+    eta: "ETA",
+    distance: "Distance",
+    active_zones: "Active Zones"
   },
   mr: {
     welcome: "नमस्कार",
@@ -62,7 +69,14 @@ export const translations = {
     rescue: "मदत करा",
     settings: "सेटिंग्ज",
     dark_mode: "डार्क मोड",
-    change_lang: "भाषा बदला"
+    change_lang: "भाषा बदला",
+    search_dest: "गंतव्यस्थान शोधा...",
+    calc_route: "सर्वात सुरक्षित मार्ग शोधत आहे...",
+    start_nav: "नेव्हिगेशन सुरू करा",
+    stop_nav: "नेव्हिगेशन थांबवा",
+    eta: "वेळ",
+    distance: "अंतर",
+    active_zones: "सक्रिय झोन"
   },
   hi: {
     welcome: "नमस्ते",
@@ -92,7 +106,14 @@ export const translations = {
     rescue: "बचाव",
     settings: "सेटिंग्स",
     dark_mode: "डार्क मोड",
-    change_lang: "भाषा बदलें"
+    change_lang: "भाषा बदलें",
+    search_dest: "मंजिल खोजें...",
+    calc_route: "सबसे सुरक्षित मार्ग की गणना...",
+    start_nav: "नेविगेशन शुरू करें",
+    stop_nav: "नेविगेशन बंद करें",
+    eta: "समय",
+    distance: "दूरी",
+    active_zones: "सक्रिय क्षेत्र"
   }
 };
 
