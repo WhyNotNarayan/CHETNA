@@ -48,8 +48,12 @@ import {
   Trophy,
   LocateFixed,
   RotateCcw,
-  Navigation as NavIcon
+  Navigation2,
+  ChevronLeft,
+  Clock
 } from 'lucide-react-native';
+import MapView, { Marker, Polyline } from 'react-native-maps';
+import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AuthContext } from '../context/AuthContext';
 import api from '../utils/api';
@@ -58,9 +62,11 @@ import { ThemeContext } from '../context/ThemeContext';
 
 const { width, height } = Dimensions.get('window');
 
+const suggestions = ['Sharp Turn', 'No Street Lights', 'High Crime Rate', 'Narrow Road', 'Deep Potholes', 'Isolated Area'];
+
 export default function BoysDashboard({ navigation }) {
   const { logout, userData } = useContext(AuthContext);
-  const { t, lang } = useContext(LanguageContext);
+  const { t, lang, changeLanguage } = useContext(LanguageContext);
   const { theme, toggleTheme, themeMode } = useContext(ThemeContext);
   
   const [news, setNews] = useState([]);
@@ -78,31 +84,139 @@ export default function BoysDashboard({ navigation }) {
   
   // Reporting States
   const [showReportModal, setShowReportModal] = useState(false);
-  const [reportType, setReportType] = useState('safe'); // safe, crime, sharp
+  const [reportType, setReportType] = useState('safe'); 
   const [reportReason, setReportReason] = useState('');
-  const [locationType, setLocationType] = useState('live'); // live, manual
+  const [locationType, setLocationType] = useState('live'); 
   const [userRank, setUserRank] = useState({ level: 5, awards: 12, points: 450 });
 
+  // Map Picking & Recording
+  const [showMapPicker, setShowMapPicker] = useState(false);
+  const [selectedPoint, setSelectedPoint] = useState(null);
+  const [recordedPath, setRecordedPath] = useState([]); // Array of {lat, lng}
+  const [isRecording, setIsRecording] = useState(false);
+  const [startTime, setStartTime] = useState('18:00');
+  const [endTime, setEndTime] = useState('06:00');
+  const [caseCount, setCaseCount] = useState('0');
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [mapRegion, setMapRegion] = useState({
+    latitude: 16.0361,
+    longitude: 73.5042,
+    latitudeDelta: 0.1,
+    longitudeDelta: 0.1,
+  });
+
   const suggestions = [
-    "Isolated Area", "Poor Lighting", "Drunkards spotted", "Safe Haven", "Regular Patrol needed"
+    "↪️ Sharp Turn", "⚠️ Accident Prone", "🌘 No Lights", "🍷 Drunkards", "Isolated Area", "Regular Patrol needed"
   ];
+
+  // 🔊 LIVE SHARP TURN ALERT & RECORDER
+  useEffect(() => {
+    let alertWatcher;
+    let recordWatcher;
+
+    const startWatchers = async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return;
+
+      alertWatcher = await Location.watchPositionAsync(
+        { accuracy: Location.Accuracy.Balanced, timeInterval: 5000, distanceInterval: 10 },
+        async (loc) => {
+          const { latitude, longitude } = loc.coords;
+          try {
+            const res = await api.get('/safety/red-zones');
+            if (res.data.success) {
+              const sharpTurns = res.data.zones.filter(z => z.type === 'SHARP_TURN');
+              sharpTurns.forEach(turn => {
+                if (calculateDistance(latitude, longitude, turn.latitude, turn.longitude) < 0.05) {
+                  import('expo-speech').then(s => s.speak("Caution! Sharp turn.", { rate: 0.9 }));
+                  Alert.alert("⚠️ SHARP TURN", "Slow down!");
+                }
+              });
+            }
+          } catch (e) {}
+        }
+      );
+
+      if (isRecording) {
+        recordWatcher = await Location.watchPositionAsync(
+          { accuracy: Location.Accuracy.High, timeInterval: 2000, distanceInterval: 5 },
+          (l) => setRecordedPath(p => [...p, { latitude: l.coords.latitude, longitude: l.coords.longitude }])
+        );
+      }
+    };
+
+    startWatchers();
+    return () => {
+      alertWatcher && alertWatcher.remove();
+      recordWatcher && recordWatcher.remove();
+    };
+  }, [isRecording]);
+
+  const smartSnap = async () => {
+    if (recordedPath.length < 2) return;
+    const start = recordedPath[0];
+    const end = recordedPath[recordedPath.length - 1];
+    
+    try {
+      const url = `https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson`;
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.routes && data.routes.length > 0) {
+        const coords = data.routes[0].geometry.coordinates.map(c => ({
+          latitude: c[1],
+          longitude: c[0]
+        }));
+        setRecordedPath(coords);
+      }
+    } catch (error) {
+      console.log('Snap error:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (!isRecording && recordedPath.length >= 2 && reportType === 'crime') {
+      smartSnap();
+    }
+  }, [isRecording, recordedPath.length]);
+
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!userData?.id) return; 
       try {
-        const newsRes = await api.get('/news/latest');
-        if (newsRes.data.success) setNews(newsRes.data.news);
-        const alertRes = await api.get('/alerts/nearby');
-        if (alertRes.data.success) {
-          // Filter critical alerts (e.g. from girls/emergency)
-          setActiveAlerts(alertRes.data.alerts);
+        const newsRes = await api.get('/news/latest').catch(() => null);
+        if (newsRes?.data?.success) setNews(newsRes.data.news);
+        
+        const alertRes = await api.get('/alerts/nearby').catch(() => null);
+        if (alertRes?.data?.success) setActiveAlerts(alertRes.data.alerts);
+        
+        const userRes = await api.get(`/auth/profile/${userData.id}`).catch(() => null);
+        if (userRes?.data?.success) {
+          setUserRank({
+            level: userRes.data.user.level || 1,
+            awards: userRes.data.user.awards || 0,
+            points: userRes.data.user.points || 0
+          });
         }
-      } catch (e) {}
+      } catch (e) {
+        console.log("Sync Error:", e.message);
+      }
     };
     fetchData();
-    const interval = setInterval(fetchData, 10000); // Fast refresh for critical alerts
+    const interval = setInterval(fetchData, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [userData?.id]);
 
   const handleManualSOS = () => {
     Alert.alert('🚨 EMERGENCY SOS', 'Alerting Sindhudurg Police and all Secret Cops...', [
@@ -111,21 +225,128 @@ export default function BoysDashboard({ navigation }) {
     ]);
   };
 
-  const handleReportSubmit = () => {
-    Alert.alert(
-      "Report Submitted",
-      "Your report is sent to Admin for verification. Once approved, you will Level UP!",
-      [{ text: "OK", onPress: () => setShowReportModal(false) }]
-    );
+  const handleMapPress = (e) => {
+    const coord = e.nativeEvent.coordinate;
+    if (reportType === 'safe') {
+      setSelectedPoint(coord);
+    } else {
+      // Add point to path
+      setRecordedPath(prev => [...prev, coord]);
+    }
   };
 
-  const handleSharpTurn = () => {
-    Alert.alert(
-      "Sharp Turn Reported",
-      "Live Location captured. Sending to Admin for verification...",
-      [{ text: "Done" }]
-    );
+  const clearPath = () => {
+    setRecordedPath([]);
+    setSelectedPoint(null);
   };
+
+  const handleReportSubmit = async () => {
+    try {
+      // 🛡️ RE-CHECK PERMISSIONS TO FIX ERROR
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert("Permission Error", "Please allow GPS access in settings to report.");
+        return;
+      }
+
+      let finalLat, finalLng, finalDestLat, finalDestLng;
+
+      if (locationType === 'live') {
+        const location = await Location.getCurrentPositionAsync({ 
+          accuracy: Location.Accuracy.Balanced,
+          timeout: 5000 
+        });
+        finalLat = location.coords.latitude;
+        finalLng = location.coords.longitude;
+      } else {
+        if (reportType === 'crime' && recordedPath.length < 2) {
+          Alert.alert("Missing Path", "Please record a path or mark points on the map.");
+          return;
+        }
+        if (reportType === 'safe' && !selectedPoint) {
+          Alert.alert("Missing Point", "Please tap on the map to mark the safe location.");
+          return;
+        }
+        finalLat = reportType === 'crime' ? recordedPath[0].latitude : selectedPoint.latitude;
+        finalLng = reportType === 'crime' ? recordedPath[0].longitude : selectedPoint.longitude;
+        finalDestLat = reportType === 'crime' ? recordedPath[recordedPath.length - 1].latitude : null;
+        finalDestLng = reportType === 'crime' ? recordedPath[recordedPath.length - 1].longitude : null;
+      }
+
+      const res = await api.post('/safety/suggest-hazard', {
+        userId: userData.id,
+        name: reportType === 'safe' ? 'Safe Location' : 'Danger Road',
+        latitude: finalLat,
+        longitude: finalLng,
+        destLatitude: finalDestLat,
+        destLongitude: finalDestLng,
+        pathData: reportType === 'crime' ? recordedPath : null,
+        startTime,
+        endTime,
+        type: reportType === 'safe' ? 'SAFE_ZONE' : 'CRIME',
+        description: reportReason,
+        caseCount: caseCount
+      });
+
+      if (res.data.success) {
+        Alert.alert("Success", res.data.message, [
+          { text: "OK", onPress: () => { 
+            setShowReportModal(false); 
+            setReportReason(''); 
+            setSelectedPoint(null);
+            setRecordedPath([]);
+            setCaseCount('0');
+            setSelectedTags([]);
+          } }
+        ]);
+      }
+    } catch (error) {
+      console.error('Report Submit Error:', error);
+      if (error.response) {
+        // Server responded with an error (e.g. 500, 404)
+        Alert.alert("Server Error", error.response.data?.message || "Internal server error. Please try again.");
+      } else if (error.request) {
+        // No response from server (Network issue)
+        Alert.alert("Network Error", "No response from server. Check your internet connection.");
+      } else {
+        // Location or logic error
+        Alert.alert("Report Error", error.message || "Failed to submit report. Please check GPS permissions.");
+      }
+    }
+  };
+
+  const handleSharpTurn = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert("Permission Denied", "GPS access is required for live reporting.");
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({ 
+        accuracy: Location.Accuracy.Balanced,
+        timeout: 5000
+      });
+      
+      const res = await api.post('/safety/suggest-hazard', {
+        userId: userData.id,
+        name: 'Sharp Turn',
+        latitude: location.coords.latitude, 
+        longitude: location.coords.longitude,
+        type: 'SHARP_TURN',
+        description: 'Auto-reported sharp turn with live location',
+        caseCount: '0'
+      });
+
+      if (res.data.success) {
+        Alert.alert("Captured 🛰️", "Sharp Turn live location sent for Admin verification!");
+      }
+    } catch (e) {
+      console.error(e);
+      Alert.alert("Error", "Failed to report sharp turn. Check your GPS.");
+    }
+  };
+
 
   const handleProfileUpdate = () => {
     setShowOtpModal(true);
@@ -147,8 +368,8 @@ export default function BoysDashboard({ navigation }) {
         <TouchableOpacity style={styles.bigSos} onPress={handleManualSOS}>
           <LinearGradient colors={['#EF4444', '#B91C1C']} style={styles.sosGradient}>
             <ShieldAlert color="#FFF" size={40} />
-            <Text style={styles.sosMainText}>SEND SOS</Text>
-            <Text style={styles.sosSubText}>TAP IN EMERGENCY</Text>
+            <Text style={styles.sosMainText}>{t('manual_sos')}</Text>
+            <Text style={styles.sosSubText}>{t('emergency_alert')}</Text>
           </LinearGradient>
         </TouchableOpacity>
 
@@ -160,8 +381,8 @@ export default function BoysDashboard({ navigation }) {
             <MapPin color="#3B82F6" size={24} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.mapBtnTitle, { color: theme.text }]}>Live Crime Map</Text>
-            <Text style={styles.mapBtnSub}>Real-time danger zone scanning</Text>
+            <Text style={[styles.mapBtnTitle, { color: theme.text }]}>{t('live_map')}</Text>
+            <Text style={styles.mapBtnSub}>{t('active_zones')}</Text>
           </View>
           <Zap color={theme.primary} size={20} />
         </TouchableOpacity>
@@ -171,7 +392,7 @@ export default function BoysDashboard({ navigation }) {
           {activeAlerts.length > 0 ? (
             <View>
               <View style={styles.sectionHeader}>
-                <Text style={styles.criticalTitle}>CRITICAL ALERTS</Text>
+                <Text style={styles.criticalTitle}>{t('nearby_alerts')}</Text>
                 <Activity color="#EF4444" size={16} />
               </View>
               {activeAlerts.map((alert, i) => (
@@ -179,19 +400,19 @@ export default function BoysDashboard({ navigation }) {
                   <View style={styles.alertHeader}>
                     <View style={styles.alertUser}>
                       <View style={styles.alertDot} />
-                      <Text style={[styles.alertUserName, { color: theme.text }]}>{alert.user} NEEDS HELP</Text>
+                      <Text style={[styles.alertUserName, { color: theme.text }]}>{alert.user} {lang === 'mr' ? 'मदत हवी आहे' : 'NEEDS HELP'}</Text>
                     </View>
-                    <Text style={styles.alertTime}>NOW</Text>
+                    <Text style={styles.alertTime}>{lang === 'mr' ? 'आता' : 'NOW'}</Text>
                   </View>
                   <Text style={styles.alertLoc}><MapPin size={12} color="#EF4444" /> {alert.location} ({alert.distance} away)</Text>
-                  <TouchableOpacity style={styles.actionBtn}><Text style={styles.actionBtnText}>RESCUE NOW</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.actionBtn}><Text style={styles.actionBtnText}>{t('rescue')}</Text></TouchableOpacity>
                 </TouchableOpacity>
               ))}
             </View>
           ) : (
             <View style={styles.emptyGlass}>
               <BellRing size={20} color={theme.subtext} />
-              <Text style={styles.emptyGlassText}>No active emergency alerts</Text>
+              <Text style={styles.emptyGlassText}>{t('no_alerts')}</Text>
             </View>
           )}
         </View>
@@ -202,8 +423,8 @@ export default function BoysDashboard({ navigation }) {
   const renderRadar = () => (
     <View style={styles.tabView}>
       <View style={styles.radarHeader}>
-        <Text style={[styles.tabTitle, { color: theme.text }]}>Live Safety Radar</Text>
-        <Text style={styles.tabSub}>Scanning nearby helpers & zones</Text>
+        <Text style={[styles.tabTitle, { color: theme.text }]}>{t('radar')}</Text>
+        <Text style={styles.tabSub}>{t('nearby_helpers')}</Text>
       </View>
       <View style={styles.radarContainer}>
         <View style={[styles.radarCircle, { borderColor: theme.primary + '44' }]}>
@@ -216,11 +437,11 @@ export default function BoysDashboard({ navigation }) {
         <View style={styles.radarStats}>
           <View style={styles.statBox}>
             <Text style={[styles.statNum, { color: theme.primary }]}>03</Text>
-            <Text style={styles.statLabel}>Helpers Nearby</Text>
+            <Text style={styles.statLabel}>{t('nearby_helpers')}</Text>
           </View>
           <View style={styles.statBox}>
             <Text style={[styles.statNum, { color: '#EF4444' }]}>01</Text>
-            <Text style={styles.statLabel}>Danger Zone</Text>
+            <Text style={styles.statLabel}>{t('crime_zones')}</Text>
           </View>
         </View>
       </View>
@@ -229,8 +450,8 @@ export default function BoysDashboard({ navigation }) {
 
   const renderPlus = () => (
     <ScrollView style={styles.tabView} showsVerticalScrollIndicator={false}>
-      <Text style={[styles.tabTitle, { color: theme.text }]}>Intelligence Hub</Text>
-      <Text style={styles.tabSub}>Report & earn rank among Secret Cops</Text>
+      <Text style={[styles.tabTitle, { color: theme.text }]}>{t('intel_hub')}</Text>
+      <Text style={styles.tabSub}>{t('rank_warning')}</Text>
       
       <TouchableOpacity 
         style={styles.reportCard}
@@ -239,8 +460,8 @@ export default function BoysDashboard({ navigation }) {
         <LinearGradient colors={['#10B981', '#059669']} style={styles.reportGradient}>
           <ShieldCheck color="#FFF" size={24} />
           <View style={{ marginLeft: 15, flex: 1 }}>
-            <Text style={styles.reportTitle}>Add Safe Location</Text>
-            <Text style={styles.reportSub}>Help others find safety points</Text>
+            <Text style={styles.reportTitle}>{t('report_safe')}</Text>
+            <Text style={styles.reportSub}>{lang === 'mr' ? 'इतरांना सुरक्षित ठिकाणे शोधण्यात मदत करा' : 'Help others find safety points'}</Text>
           </View>
           <ChevronRight color="#FFF" size={20} />
         </LinearGradient>
@@ -250,11 +471,11 @@ export default function BoysDashboard({ navigation }) {
         style={styles.reportCard}
         onPress={() => { setReportType('crime'); setShowReportModal(true); }}
       >
-        <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.reportGradient}>
+        <LinearGradient colors={['#EF4444', '#B91C1C']} style={styles.reportGradient}>
           <AlertTriangle color="#FFF" size={24} />
           <View style={{ marginLeft: 15, flex: 1 }}>
-            <Text style={styles.reportTitle}>Add Crime Road</Text>
-            <Text style={styles.reportSub}>Mark dangerous paths for Admin</Text>
+            <Text style={styles.reportTitle}>{t('report_crime')}</Text>
+            <Text style={styles.reportSub}>{lang === 'mr' ? 'मॅपिंगसाठी धोक्याचे रस्ते चिन्हांकित करा' : 'Trace danger roads for mapping'}</Text>
           </View>
           <ChevronRight color="#FFF" size={20} />
         </LinearGradient>
@@ -264,21 +485,29 @@ export default function BoysDashboard({ navigation }) {
         style={styles.reportCard}
         onPress={handleSharpTurn}
       >
-        <LinearGradient colors={['#3B82F6', '#2563EB']} style={styles.reportGradient}>
+        <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.reportGradient}>
           <RotateCcw color="#FFF" size={24} />
           <View style={{ marginLeft: 15, flex: 1 }}>
-            <Text style={styles.reportTitle}>Quick Sharp Turn</Text>
-            <Text style={styles.reportSub}>One-tap live location report</Text>
+            <Text style={styles.reportTitle}>{t('quick_turn')}</Text>
+            <Text style={styles.reportSub}>{lang === 'mr' ? 'धोकादायक वळणाची त्वरित नोंद करा' : 'Report dangerous turn instantly'}</Text>
           </View>
-          <LocateFixed color="#FFF" size={20} />
+          <Zap color="#FFF" size={20} />
         </LinearGradient>
       </TouchableOpacity>
 
-      <View style={[styles.infoBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <ShieldAlert size={18} color="#EF4444" />
-        <Text style={[styles.infoText, { color: theme.subtext }]}>
-          All reports are verified by Admin. False reports will lead to Rank Demotion (-1 Level).
-        </Text>
+      {/* RANK CARD */}
+      <View style={[styles.rankHub, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <View style={styles.rankItem}>
+          <Award color={theme.primary} size={24} />
+          <Text style={[styles.rankVal, { color: theme.text }]}>{userRank.level}</Text>
+          <Text style={styles.rankLab}>{t('level')}</Text>
+        </View>
+        <View style={styles.rankDivider} />
+        <View style={styles.rankItem}>
+          <Trophy color="#F59E0B" size={24} />
+          <Text style={[styles.rankVal, { color: theme.text }]}>{userRank.points}</Text>
+          <Text style={styles.rankLab}>{t('points_label')}</Text>
+        </View>
       </View>
     </ScrollView>
   );
@@ -312,7 +541,7 @@ export default function BoysDashboard({ navigation }) {
         </View>
       </View>
 
-      {/* 🏁 LEADERBOARD PREVIEW */}
+          {/* 🏁 LEADERBOARD PREVIEW */}
       <View style={styles.leaderboardBox}>
         <Text style={styles.hubTitle}>TOP SECRET COPS</Text>
         {[
@@ -328,24 +557,9 @@ export default function BoysDashboard({ navigation }) {
         ))}
       </View>
 
-      {/* Settings Hub */}
-      <View style={[styles.settingsHub, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={styles.hubTitle}>SETTINGS HUB</Text>
-        <TouchableOpacity style={styles.settingRow} onPress={() => {}}>
-          <View style={styles.settingIcon}><Globe size={18} color={theme.primary} /></View>
-          <Text style={[styles.settingText, { color: theme.text }]}>Language: {lang.toUpperCase()}</Text>
-          <ChevronRight size={16} color={theme.subtext} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.settingRow} onPress={toggleTheme}>
-          <View style={styles.settingIcon}><Zap size={18} color={theme.primary} /></View>
-          <Text style={[styles.settingText, { color: theme.text }]}>Appearance: {themeMode.toUpperCase()}</Text>
-          <ChevronRight size={16} color={theme.subtext} />
-        </TouchableOpacity>
-      </View>
-
       <View style={styles.profileForm}>
         <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>FULL NAME</Text>
+          <Text style={styles.inputLabel}>{lang === 'mr' ? 'पूर्ण नाव' : 'FULL NAME'}</Text>
           <View style={[styles.inputBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <User size={18} color={theme.subtext} />
             <TextInput 
@@ -358,7 +572,7 @@ export default function BoysDashboard({ navigation }) {
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>MOBILE NUMBER</Text>
+          <Text style={styles.inputLabel}>{lang === 'mr' ? 'मोबाईल नंबर' : 'MOBILE NUMBER'}</Text>
           <View style={[styles.inputBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Phone size={18} color={theme.subtext} />
             <TextInput 
@@ -372,7 +586,7 @@ export default function BoysDashboard({ navigation }) {
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>ADDRESS</Text>
+          <Text style={styles.inputLabel}>{lang === 'mr' ? 'पत्ता' : 'ADDRESS'}</Text>
           <View style={[styles.inputBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <MapPin size={18} color={theme.subtext} />
             <TextInput 
@@ -384,20 +598,50 @@ export default function BoysDashboard({ navigation }) {
           </View>
         </View>
 
+        <View style={[styles.settingsHub, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={styles.hubTitle}>{t('settings')}</Text>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity 
+              style={[styles.toggleBtn, lang === 'en' && { backgroundColor: theme.primary }]}
+              onPress={() => changeLanguage('en')}
+            >
+              <Text style={[styles.toggleText, { color: lang === 'en' ? '#000' : theme.text }]}>English</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.toggleBtn, lang === 'mr' && { backgroundColor: theme.primary }]}
+              onPress={() => changeLanguage('mr')}
+            >
+              <Text style={[styles.toggleText, { color: lang === 'mr' ? '#000' : theme.text }]}>मराठी</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.toggleBtn, lang === 'hi' && { backgroundColor: theme.primary }]}
+              onPress={() => changeLanguage('hi')}
+            >
+              <Text style={[styles.toggleText, { color: lang === 'hi' ? '#000' : theme.text }]}>हिन्दी</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <TouchableOpacity style={[styles.settingRow, { marginTop: 20 }]} onPress={toggleTheme}>
+            <View style={styles.settingIcon}><Zap size={18} color={theme.primary} /></View>
+            <Text style={[styles.settingText, { color: theme.text }]}>{t('dark_mode')}: {themeMode.toUpperCase()}</Text>
+            <ChevronRight size={16} color={theme.subtext} />
+          </TouchableOpacity>
+        </View>
+
         {!isEditing ? (
           <TouchableOpacity style={[styles.editBtn, { backgroundColor: theme.primary }]} onPress={() => setIsEditing(true)}>
             <Edit2 color="#000" size={20} />
-            <Text style={styles.editBtnText}>Edit Profile</Text>
+            <Text style={styles.editBtnText}>{lang === 'mr' ? 'प्रोफाइल संपादित करा' : 'Edit Profile'}</Text>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity style={styles.saveBtn} onPress={handleProfileUpdate}>
             <CheckCircle color="#FFF" size={20} />
-            <Text style={styles.saveBtnText}>Save Changes (Need OTP)</Text>
+            <Text style={styles.saveBtnText}>{lang === 'mr' ? 'बदल जतन करा' : 'Save Changes'}</Text>
           </TouchableOpacity>
         )}
         
         <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
-          <Text style={styles.logoutText}>Logout Session</Text>
+          <Text style={styles.logoutText}>{lang === 'mr' ? 'लॉगआउट' : 'Logout Session'}</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -452,55 +696,264 @@ export default function BoysDashboard({ navigation }) {
       {/* 📝 REPORT MODAL */}
       <Modal visible={showReportModal} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalBox, { backgroundColor: theme.card, width: '90%' }]}>
-            <Text style={[styles.tabTitle, { color: theme.text, fontSize: 20 }]}>
-              Add {reportType === 'safe' ? 'Safe Point' : 'Crime Road'}
-            </Text>
-            <Text style={styles.modalSub}>Verified reports earn you Rank Up points!</Text>
-
-            <View style={styles.locationToggle}>
-              <TouchableOpacity 
-                style={[styles.toggleBtn, locationType === 'live' && { backgroundColor: theme.primary }]}
-                onPress={() => setLocationType('live')}
-              >
-                <LocateFixed color={locationType === 'live' ? '#000' : theme.subtext} size={16} />
-                <Text style={[styles.toggleText, { color: locationType === 'live' ? '#000' : theme.subtext }]}>Live GPS</Text>
+          <SafeAreaView style={{ width: '100%', height: '100%' }}>
+            <View style={[styles.modalHeader, { backgroundColor: theme.card }]}>
+              <TouchableOpacity onPress={() => setShowReportModal(false)} style={styles.backBtn}>
+                <ChevronLeft color={theme.text} size={28} />
               </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.toggleBtn, locationType === 'manual' && { backgroundColor: theme.primary }]}
-                onPress={() => setLocationType('manual')}
-              >
-                <Search color={locationType === 'manual' ? '#000' : theme.subtext} size={16} />
-                <Text style={[styles.toggleText, { color: locationType === 'manual' ? '#000' : theme.subtext }]}>Search</Text>
-              </TouchableOpacity>
+              <Text style={[styles.headerTitle, { color: theme.text }]}>
+                {reportType === 'safe' ? t('report_safe') : t('report_crime')}
+              </Text>
+              <View style={{ width: 28 }} />
             </View>
 
-            <TextInput
-              style={[styles.reasonInput, { color: theme.text, borderColor: theme.border }]}
-              placeholder="Why is this location safe/danger?"
-              placeholderTextColor={theme.subtext}
-              multiline
-              value={reportReason}
-              onChangeText={setReportReason}
-            />
+            <ScrollView 
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
+              style={{ backgroundColor: theme.background }}
+            >
+              <Text style={[styles.modalSub, { textAlign: 'left', marginBottom: 20 }]}>{t('rank_warning')}</Text>
 
-            <View style={styles.suggestRow}>
-              {suggestions.map((s, i) => (
-                <TouchableOpacity key={i} style={styles.suggestTag} onPress={() => setReportReason(s)}>
-                  <Text style={styles.suggestTagText}>{s}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+              {/* LOCATION SELECTOR */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: theme.text }]}>{lang === 'mr' ? 'स्थान निवडा' : 'SELECT LOCATION'}</Text>
+                <View style={styles.locationToggle}>
+                  <TouchableOpacity 
+                    style={[styles.toggleBtn, locationType === 'live' && { backgroundColor: theme.primary, borderColor: theme.primary }]}
+                    onPress={() => setLocationType('live')}
+                  >
+                    <LocateFixed color={locationType === 'live' ? '#000' : theme.subtext} size={18} />
+                    <Text style={[styles.toggleText, { color: locationType === 'live' ? '#000' : theme.subtext }]}>{lang === 'mr' ? 'थेट स्थान' : 'Live GPS'}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.toggleBtn, locationType === 'manual' && { backgroundColor: theme.primary, borderColor: theme.primary }]}
+                    onPress={() => { setLocationType('manual'); setShowMapPicker(true); }}
+                  >
+                    <MapIcon color={locationType === 'manual' ? '#000' : theme.subtext} size={18} />
+                    <Text style={[styles.toggleText, { color: locationType === 'manual' ? '#000' : theme.subtext }]}>{lang === 'mr' ? 'नकाशावरून' : 'Map Select'}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
 
-            <TouchableOpacity style={[styles.verifyBtn, { backgroundColor: theme.primary }]} onPress={handleReportSubmit}>
-              <Text style={styles.verifyBtnText}>SUBMIT TO ADMIN</Text>
+              {locationType === 'manual' && (
+                <View style={[styles.inputGroup, { marginTop: 10 }]}>
+                  <Text style={[styles.inputLabel, { color: theme.text }]}>{t('visual_mapping')}</Text>
+                  {reportType === 'safe' ? (
+                    <TouchableOpacity style={styles.mapSelector} onPress={() => setShowMapPicker(true)}>
+                      <View style={styles.mapPreviewInfo}>
+                        <MapPin size={22} color={selectedPoint ? '#EF4444' : theme.subtext} />
+                        <View style={{ marginLeft: 15 }}>
+                          <Text style={[styles.coordinateText, { color: theme.text }]}>
+                            {selectedPoint ? `${selectedPoint.latitude.toFixed(4)}, ${selectedPoint.longitude.toFixed(4)}` : (lang === 'mr' ? 'क्षेत्र निवडलेले नाही' : 'No Area Selected')}
+                          </Text>
+                          <Text style={styles.coordinateSubText}>{lang === 'mr' ? 'असुरक्षित केंद्र सेट करण्यासाठी टॅप करा' : 'Tap to set unsafe center'}</Text>
+                        </View>
+                      </View>
+                      <ChevronRight size={20} color={theme.subtext} />
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={{ gap: 12 }}>
+                      <TouchableOpacity style={styles.mapSelector} onPress={() => setShowMapPicker(true)}>
+                        <View style={styles.mapPreviewInfo}>
+                          <View style={[styles.pointDot, { backgroundColor: recordedPath.length > 0 ? '#F59E0B' : theme.subtext }]} />
+                          <View style={{ marginLeft: 15 }}>
+                            <Text style={[styles.coordinateText, { color: theme.text }]}>
+                              {recordedPath.length > 0 ? (lang === 'mr' ? 'सुरुवात बिंदू' : 'Start Point') : (lang === 'mr' ? 'सुरुवात बिंदू नाही' : 'No Start Point')}
+                            </Text>
+                            <Text style={styles.coordinateSubText}>{recordedPath.length > 0 ? `${recordedPath[0].latitude.toFixed(4)}, ${recordedPath[0].longitude.toFixed(4)}` : (lang === 'mr' ? 'सुरुवात करण्यासाठी टॅप करा' : 'Tap to set start')}</Text>
+                          </View>
+                        </View>
+                        <ChevronRight size={20} color={theme.subtext} />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity style={styles.mapSelector} onPress={() => setShowMapPicker(true)}>
+                        <View style={styles.mapPreviewInfo}>
+                          <View style={[styles.pointDot, { backgroundColor: recordedPath.length > 1 ? '#EF4444' : theme.subtext }]} />
+                          <View style={{ marginLeft: 15 }}>
+                            <Text style={[styles.coordinateText, { color: theme.text }]}>
+                              {recordedPath.length > 1 ? (lang === 'mr' ? 'अंतिम बिंदू' : 'End Point') : (lang === 'mr' ? 'अंतिम बिंदू नाही' : 'No End Point')}
+                            </Text>
+                            <Text style={styles.coordinateSubText}>{recordedPath.length > 1 ? `${recordedPath[recordedPath.length-1].latitude.toFixed(4)}, ${recordedPath[recordedPath.length-1].longitude.toFixed(4)}` : (lang === 'mr' ? 'पूर्ण रस्ता चिन्हांकित करा' : 'Trace full road')}</Text>
+                          </View>
+                        </View>
+                        <ChevronRight size={20} color={theme.subtext} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              )}
+
+              <View style={styles.timeSection}>
+                <Text style={[styles.inputLabel, { color: theme.text }]}>{lang === 'mr' ? 'धोक्याची वेळ (पर्यायी)' : 'DANGER TIMING (OPTIONAL)'}</Text>
+                <View style={styles.timeRow}>
+                  <View style={[styles.timeInputGroup, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <Clock size={16} color={theme.primary} />
+                    <TextInput 
+                      style={[styles.timeInput, { color: theme.text }]}
+                      placeholder="10 PM"
+                      placeholderTextColor={theme.subtext}
+                      value={startTime}
+                      onChangeText={setStartTime}
+                    />
+                  </View>
+                  <Text style={{ color: theme.subtext, fontWeight: 'bold' }}>-</Text>
+                  <View style={[styles.timeInputGroup, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                    <Clock size={16} color={theme.primary} />
+                    <TextInput 
+                      style={[styles.timeInput, { color: theme.text }]}
+                      placeholder="4 AM"
+                      placeholderTextColor={theme.subtext}
+                      value={endTime}
+                      onChangeText={setEndTime}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              {/* CASES FILED & LEGEND */}
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: theme.text }]}>{t('cases_filed')}</Text>
+                <View style={[styles.inputBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                  <AlertTriangle size={20} color={theme.primary} />
+                  <TextInput 
+                    style={[styles.input, { color: theme.text, fontSize: 18, fontWeight: 'bold' }]}
+                    placeholder="0"
+                    placeholderTextColor={theme.subtext}
+                    keyboardType="numeric"
+                    value={caseCount}
+                    onChangeText={setCaseCount}
+                  />
+                </View>
+                
+                {/* DYNAMIC RISK LEGEND DIRECTLY BELOW */}
+                <View style={[styles.riskLegendBox, { backgroundColor: theme.card + '50', borderColor: theme.border }]}>
+                  <View style={styles.riskItem}>
+                    <View style={[styles.riskDot, { backgroundColor: '#10B981' }]} />
+                    <Text style={[styles.riskText, { color: '#10B981' }]}>0-10: {lang === 'mr' ? 'सुरक्षित (हिरवा)' : 'SAFE AREA (GREEN)'}</Text>
+                  </View>
+                  <View style={styles.riskItem}>
+                    <View style={[styles.riskDot, { backgroundColor: '#F59E0B' }]} />
+                    <Text style={[styles.riskText, { color: '#F59E0B' }]}>11-20: {lang === 'mr' ? 'चेतावणी (नारिंगी)' : 'WARNING (ORANGE)'}</Text>
+                  </View>
+                  <View style={styles.riskItem}>
+                    <View style={[styles.riskDot, { backgroundColor: '#EF4444' }]} />
+                    <Text style={[styles.riskText, { color: '#EF4444' }]}>21+: {lang === 'mr' ? 'धोकादायक (लाल)' : 'DANGER ZONE (RED)'}</Text>
+                  </View>
+                </View>
+              </View>
+
+              <View style={{ marginTop: 10 }}>
+                <Text style={[styles.inputLabel, { color: theme.text }]}>{lang === 'mr' ? 'त्वरीत सूचना' : 'QUICK SUGGESTIONS'}</Text>
+                <View style={styles.suggestRow}>
+                  {['Sharp Turn', 'No Street Lights', 'High Crime Rate', 'Narrow Road', 'Deep Potholes', 'Isolated Area'].map((s, i) => (
+                    <TouchableOpacity 
+                      key={i} 
+                      style={[styles.suggestTag, selectedTags.includes(s) && { backgroundColor: theme.primary, borderColor: theme.primary }]} 
+                      onPress={() => {
+                        setSelectedTags(prev => {
+                            const newTags = prev.includes(s) ? prev.filter(t => t !== s) : [...prev, s];
+                            setReportReason(newTags.join(', '));
+                            return newTags;
+                        });
+                      }}
+                    >
+                      <Text style={[styles.suggestTagText, selectedTags.includes(s) && { color: '#000' }]}>{s}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: theme.text }]}>{lang === 'mr' ? 'तपशीलवार वर्णन' : 'DETAILED DESCRIPTION'}</Text>
+                <TextInput
+                  style={[styles.reasonInput, { color: theme.text, backgroundColor: theme.card, borderColor: theme.border }]}
+                  placeholder={lang === 'mr' ? 'येथे लिहा...' : 'Explain the danger here...'}
+                  placeholderTextColor={theme.subtext}
+                  multiline
+                  value={reportReason}
+                  onChangeText={setReportReason}
+                />
+              </View>
+
+              <TouchableOpacity 
+                style={[styles.submitBtn, { backgroundColor: theme.primary }]} 
+                onPress={handleReportSubmit}
+              >
+                <Text style={styles.submitBtnText}>{t('submit_admin')}</Text>
+                <ChevronRight size={20} color="#000" />
+              </TouchableOpacity>
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      </Modal>
+
+      {/* 🗺️ MAP PICKER MODAL */}
+      <Modal visible={showMapPicker} animationType="fade">
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
+          <View style={styles.mapHeader}>
+            <TouchableOpacity onPress={() => setShowMapPicker(false)} style={styles.mapBackBtn}>
+              <ChevronLeft color="#FFF" size={24} />
             </TouchableOpacity>
-
-            <TouchableOpacity onPress={() => setShowReportModal(false)}>
-              <Text style={styles.cancelText}>CANCEL</Text>
+            <Text style={styles.mapTitle}>
+              {reportType === 'safe' ? 'Pin Safe Spot' : 'Map Crime Road'}
+            </Text>
+            <TouchableOpacity onPress={() => setShowMapPicker(false)} style={styles.doneBtn}>
+              <Text style={styles.doneText}>DONE</Text>
             </TouchableOpacity>
           </View>
-        </View>
+
+          <MapView
+            style={{ flex: 1 }}
+            initialRegion={mapRegion}
+            onPress={handleMapPress}
+            showsUserLocation
+            theme="dark"
+          >
+            {reportType === 'safe' && selectedPoint && (
+              <Marker coordinate={selectedPoint} pinColor="#10B981" title="Safe Location" />
+            )}
+
+            {reportType === 'crime' && recordedPath.map((p, i) => (
+              <Marker 
+                key={i} 
+                coordinate={p} 
+                pinColor={i === 0 ? "#10B981" : i === recordedPath.length - 1 ? "#EF4444" : "#FFD700"} 
+                scaleX={0.5} scaleY={0.5}
+              />
+            ))}
+
+            {reportType === 'crime' && recordedPath.length > 1 && (
+              <Polyline
+                coordinates={recordedPath}
+                strokeColor="#EF4444"
+                strokeWidth={5}
+              />
+            )}
+          </MapView>
+          
+          <View style={styles.mapInstruct}>
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+              {reportType === 'crime' && (
+                <TouchableOpacity 
+                  style={[styles.recordBtn, { backgroundColor: isRecording ? '#EF4444' : '#3B82F6' }]} 
+                  onPress={() => setIsRecording(!isRecording)}
+                >
+                  <Text style={styles.recordBtnText}>
+                    {isRecording ? '⏹️ STOP TRACKER' : '🛰️ START LIVE GPS'}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.clearBtn} onPress={clearPath}>
+                <Text style={styles.clearBtnText}>🗑️ CLEAR</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.instructText}>
+              {reportType === 'safe' 
+                ? 'Tap once to mark the safe area.' 
+                : isRecording ? 'Riding... Path is being saved live!' : 'Tap multiple points on the map to draw the road.'}
+            </Text>
+          </View>
+        </SafeAreaView>
       </Modal>
 
       {/* 🔑 OTP MODAL */}
@@ -691,6 +1144,12 @@ const styles = StyleSheet.create({
   locationToggle: { flexDirection: 'row', width: '100%', gap: 10, marginBottom: 15 },
   toggleBtn: { flex: 1, height: 45, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: '#8E8E8E44' },
   toggleText: { fontSize: 13, fontWeight: '700' },
+  
+  timeSection: { width: '100%', marginBottom: 15 },
+  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
+  timeInputGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, height: 45, borderRadius: 12, borderWidth: 1, borderColor: '#8E8E8E33' },
+  timeInput: { flex: 1, marginLeft: 8, fontSize: 13, fontWeight: '600' },
+
   reasonInput: { width: '100%', height: 80, borderWidth: 1, borderRadius: 12, padding: 12, marginBottom: 15, textAlignVertical: 'top' },
   suggestRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 25 },
   suggestTag: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: '#3B82F620' },
@@ -702,8 +1161,29 @@ const styles = StyleSheet.create({
   otpInput: { width: '100%', height: 60, borderWidth: 2, borderRadius: 14, textAlign: 'center', fontSize: 24, fontWeight: '900', marginBottom: 20, backgroundColor: 'transparent' },
   verifyBtn: { width: '100%', height: 55, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
   verifyBtnText: { color: '#000', fontWeight: '900', fontSize: 16 },
-  cancelText: { color: '#8E8E8E', fontWeight: '700' }
+  cancelText: { color: '#8E8E8E', fontWeight: '700' },
+  
+  // MAP PICKER
+  mapHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, backgroundColor: '#111' },
+  mapBackBtn: { padding: 5 },
+  mapTitle: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+  doneBtn: { backgroundColor: '#FFD700', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 10 },
+  doneText: { color: '#000', fontWeight: 'bold', fontSize: 12 },
+  mapInstruct: { position: 'absolute', bottom: 30, alignSelf: 'center', backgroundColor: 'rgba(0,0,0,0.85)', padding: 20, borderRadius: 24, borderWidth: 1, borderColor: '#333', width: '90%' },
+  instructText: { color: '#FFF', fontSize: 13, fontWeight: 'bold', textAlign: 'center' },
+  recordBtn: { flex: 2, paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  recordBtnText: { color: '#FFF', fontWeight: '900', fontSize: 13 },
+  clearBtn: { flex: 1, backgroundColor: '#333', paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  clearBtnText: { color: '#FFF', fontWeight: '800', fontSize: 12 },
+  
+  // NEW MODAL STYLES
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
+  backBtn: { padding: 5 },
+  headerTitle: { fontSize: 18, fontWeight: 'bold' },
+  riskLegendBox: { marginTop: 15, padding: 15, borderRadius: 12, borderWidth: 1, gap: 10 },
+  riskItem: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  riskDot: { width: 10, height: 10, borderRadius: 5 },
+  riskText: { fontSize: 12, fontWeight: 'bold' },
+  submitBtn: { width: '100%', height: 60, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 10 },
+  submitBtnText: { color: '#000', fontSize: 16, fontWeight: '900' }
 });
-
-
-
