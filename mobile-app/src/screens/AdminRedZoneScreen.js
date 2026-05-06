@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useContext } from 'react';
-import { 
-  View, 
-  Text, 
-  TouchableOpacity, 
-  StyleSheet, 
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
   SafeAreaView,
   TextInput,
   Alert,
@@ -93,22 +93,29 @@ const AdminRedZoneScreen = ({ navigation }) => {
   const handleDelete = (id) => {
     Alert.alert('Delete Zone', 'Remove this data from Sindhudurg records?', [
       { text: 'Cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        try {
-          await api.delete(`/admin/red-zones/${id}`);
-          fetchZones();
-        } catch (e) { Alert.alert('Error', 'Delete failed'); }
-      }}
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          try {
+            await api.delete(`/admin/red-zones/${id}`);
+            fetchZones();
+          } catch (e) { Alert.alert('Error', 'Delete failed'); }
+        }
+      }
     ]);
   };
 
-  const getRiskColor = (level, opacity = 1) => {
-    switch(level) {
-      case 1: return `rgba(0, 200, 81, ${opacity})`;   // Green
-      case 2: return `rgba(255, 187, 51, ${opacity})`; // Yellow
-      case 3: return `rgba(255, 136, 0, ${opacity})`;  // Orange
-      case 4: return `rgba(255, 68, 68, ${opacity})`;  // Light Red
-      case 5: return `rgba(204, 0, 0, ${opacity})`;    // Dark Red
+  const getRiskColor = (level, opacity = 1, caseCount = 0) => {
+    // Determine color based on caseCount first for real-time accuracy
+    const count = parseInt(caseCount) || 0;
+    if (count > 20) return `rgba(239, 68, 68, ${opacity})`;  // Red (#EF4444)
+    if (count > 10) return `rgba(245, 158, 11, ${opacity})`;  // Orange (#F59E0B)
+    if (count > 0) return `rgba(16, 185, 129, ${opacity})`;   // Dark Green (#10B981)
+    
+    // Fallback to level if caseCount is not provided or 0
+    switch (level) {
+      case 1: return `rgba(16, 185, 129, ${opacity})`;
+      case 2: return `rgba(245, 158, 11, ${opacity})`;
+      case 3: return `rgba(239, 68, 68, ${opacity})`;
       default: return `rgba(136, 136, 136, ${opacity})`;
     }
   };
@@ -144,9 +151,9 @@ const AdminRedZoneScreen = ({ navigation }) => {
               {/* Prioritize high-precision path data for curves */}
               {zone.pathData && JSON.parse(zone.pathData).length > 1 ? (
                 <>
-                  <Polyline 
+                  <Polyline
                     coordinates={JSON.parse(zone.pathData)}
-                    strokeColor={getRiskColor(zone.riskLevel, 0.9)}
+                    strokeColor={getRiskColor(zone.riskLevel, 0.9, zone.caseCount)}
                     strokeWidth={6}
                     lineJoin="round"
                     lineCap="round"
@@ -155,8 +162,8 @@ const AdminRedZoneScreen = ({ navigation }) => {
                     const path = JSON.parse(zone.pathData);
                     return (
                       <Marker coordinate={path[path.length - 1]}>
-                        <View style={[styles.customMarker, { backgroundColor: getRiskColor(zone.riskLevel) }]}>
-                            <MapPin color="#fff" size={10} />
+                        <View style={[styles.customMarker, { backgroundColor: getRiskColor(zone.riskLevel, 1, zone.caseCount) }]}>
+                          <MapPin color="#fff" size={10} />
                         </View>
                       </Marker>
                     );
@@ -164,19 +171,19 @@ const AdminRedZoneScreen = ({ navigation }) => {
                 </>
               ) : (zone.destLatitude && zone.destLongitude) || (zone.name && zone.name.includes(' To ')) ? (
                 <>
-                  <Polyline 
+                  <Polyline
                     coordinates={[
                       { latitude: zone.latitude, longitude: zone.longitude },
                       { latitude: zone.destLatitude || (zone.latitude + 0.005), longitude: zone.destLongitude || (zone.longitude + 0.005) }
                     ]}
-                    strokeColor={getRiskColor(zone.riskLevel, 0.8)}
+                    strokeColor={getRiskColor(zone.riskLevel, 0.8, zone.caseCount)}
                     strokeWidth={5}
                   />
                   {zone.destLatitude && (
                     <Marker coordinate={{ latitude: zone.destLatitude, longitude: zone.destLongitude }}>
-                       <View style={[styles.customMarker, { backgroundColor: getRiskColor(zone.riskLevel) }]}>
-                          <MapPin color="#fff" size={10} />
-                       </View>
+                      <View style={[styles.customMarker, { backgroundColor: getRiskColor(zone.riskLevel, 1, zone.caseCount) }]}>
+                        <MapPin color="#fff" size={10} />
+                      </View>
                     </Marker>
                   )}
                 </>
@@ -184,24 +191,23 @@ const AdminRedZoneScreen = ({ navigation }) => {
                 <Circle
                   center={{ latitude: zone.latitude, longitude: zone.longitude }}
                   radius={zone.radius || 200}
-                  fillColor={getRiskColor(zone.riskLevel, 0.3)}
-                  strokeColor={getRiskColor(zone.riskLevel, 0.7)}
+                  fillColor={getRiskColor(zone.riskLevel, 0.3, zone.caseCount)}
+                  strokeColor={getRiskColor(zone.riskLevel, 0.7, zone.caseCount)}
                   strokeWidth={2}
                 />
               )}
               <Marker
                 coordinate={{ latitude: zone.latitude, longitude: zone.longitude }}
-                title={zone.name}
-                description={`${zone.caseCount} cases • Active: ${zone.startTime || '24h'} - ${zone.endTime || '24h'}`}
+                onPress={() => setSelectedZone(zone)}
               >
-                <View style={[styles.customMarker, { backgroundColor: getRiskColor(zone.riskLevel) }]}>
-                    <ShieldAlert color="#fff" size={12} />
+                <View style={[styles.customMarker, { backgroundColor: getRiskColor(zone.riskLevel, 1, zone.caseCount) }]}>
+                  <MapPin color="#fff" size={12} />
                 </View>
               </Marker>
             </React.Fragment>
           ))}
         </MapView>
-        
+
         {isAdmin && (
           <View style={styles.mapOverlay}>
             <View style={styles.instructionBox}>
@@ -215,30 +221,30 @@ const AdminRedZoneScreen = ({ navigation }) => {
       <View style={styles.listSection}>
         <Text style={styles.listTitle}>Recorded Crime Data</Text>
         {loading ? (
-            <ActivityIndicator size="small" color="#FFD700" style={{ marginTop: 20 }} />
+          <ActivityIndicator size="small" color="#FFD700" style={{ marginTop: 20 }} />
         ) : (
-            <FlatList
-                data={zones}
-                keyExtractor={item => item.id}
-                renderItem={({ item }) => (
-                    <View style={styles.zoneRow}>
-                        <View style={[styles.riskDot, { backgroundColor: getRiskColor(item.riskLevel) }]} />
-                        <View style={styles.zoneInfo}>
-                            <Text style={styles.zoneName}>{item.name}</Text>
-                            <Text style={styles.zoneDetails}>
-                                {item.caseCount} cases • {item.crimeType} 
-                                {item.startTime && ` • 🕒 ${item.startTime}-${item.endTime}`}
-                            </Text>
-                        </View>
-                        {isAdmin && (
-                          <TouchableOpacity onPress={() => handleDelete(item.id)}>
-                              <Trash2 size={18} color="#444" />
-                          </TouchableOpacity>
-                        )}
-                    </View>
+          <FlatList
+            data={zones}
+            keyExtractor={item => item.id}
+            renderItem={({ item }) => (
+              <View style={styles.zoneRow}>
+                <View style={[styles.riskDot, { backgroundColor: getRiskColor(item.riskLevel) }]} />
+                <View style={styles.zoneInfo}>
+                  <Text style={styles.zoneName}>{item.name}</Text>
+                  <Text style={styles.zoneDetails}>
+                    {item.caseCount} cases • {item.crimeType}
+                    {item.startTime && ` • 🕒 ${item.startTime}-${item.endTime}`}
+                  </Text>
+                </View>
+                {isAdmin && (
+                  <TouchableOpacity onPress={() => handleDelete(item.id)}>
+                    <Trash2 size={18} color="#444" />
+                  </TouchableOpacity>
                 )}
-                ListEmptyComponent={<Text style={styles.emptyText}>No data for this area.</Text>}
-            />
+              </View>
+            )}
+            ListEmptyComponent={<Text style={styles.emptyText}>No data for this area.</Text>}
+          />
         )}
       </View>
 
@@ -248,25 +254,25 @@ const AdminRedZoneScreen = ({ navigation }) => {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>New Crime Zone in Sindhudurg</Text>
             <Text style={styles.modalSubtitle}>Location: {selectedCoords?.latitude.toFixed(4)}, {selectedCoords?.longitude.toFixed(4)}</Text>
-            
-            <TextInput 
-              style={styles.input} 
-              placeholder="Area Name (e.g. Malvan Jetty)" 
+
+            <TextInput
+              style={styles.input}
+              placeholder="Area Name (e.g. Malvan Jetty)"
               placeholderTextColor="#666"
               value={areaName}
               onChangeText={setAreaName}
             />
-            <TextInput 
-              style={styles.input} 
-              placeholder="Case Count (1-50+)" 
+            <TextInput
+              style={styles.input}
+              placeholder="Case Count (1-50+)"
               placeholderTextColor="#666"
               keyboardType="numeric"
               value={caseCount}
               onChangeText={setCaseCount}
             />
-            <TextInput 
-              style={styles.input} 
-              placeholder="Primary Crime (e.g. Theft/Assault)" 
+            <TextInput
+              style={styles.input}
+              placeholder="Primary Crime (e.g. Theft/Assault)"
               placeholderTextColor="#666"
               value={crimeType}
               onChangeText={setCrimeType}
@@ -342,7 +348,7 @@ const styles = StyleSheet.create({
   zoneName: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
   zoneDetails: { color: '#888', fontSize: 12, marginTop: 4 },
   emptyText: { color: '#444', textAlign: 'center', marginTop: 50 },
-  
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.8)',

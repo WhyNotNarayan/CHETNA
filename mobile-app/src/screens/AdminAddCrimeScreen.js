@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TextInput, 
-  TouchableOpacity, 
-  SafeAreaView, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  SafeAreaView,
   ScrollView,
   Alert,
   KeyboardAvoidingView,
@@ -15,11 +15,11 @@ import {
 } from 'react-native';
 import MapView, { Marker, Polyline, Polygon } from '../components/MapWrapper';
 import { SINDHUDURG_COORDS, SINDHUDURG_BOUNDARY } from '../utils/mapConstants';
-import { 
-  ChevronLeft, 
-  PlusCircle, 
-  MapPin, 
-  ClipboardList, 
+import {
+  ChevronLeft,
+  PlusCircle,
+  MapPin,
+  ClipboardList,
   AlertTriangle,
   ShieldAlert,
   Clock,
@@ -60,11 +60,11 @@ const AdminAddCrimeScreen = ({ navigation }) => {
   const [endTime, setEndTime] = useState('04:00 AM');
   const [loading, setLoading] = useState(false);
   const [mapModalVisible, setMapModalVisible] = useState(false);
-  const [activePoint, setActivePoint] = useState('START'); 
+  const [activePoint, setActivePoint] = useState('START');
   const [suggestions, setSuggestions] = useState([]);
-  
+
   // High-precision tracking state
-  const [recordedPath, setRecordedPath] = useState([]); 
+  const [recordedPath, setRecordedPath] = useState([]);
   const [isRecording, setIsRecording] = useState(false);
   const watchSubscription = useRef(null);
 
@@ -83,7 +83,7 @@ const AdminAddCrimeScreen = ({ navigation }) => {
     if (field === 'TO') setToLocation(text);
 
     if (text.length > 1) {
-      const filtered = SINDHUDURG_AREAS.filter(a => 
+      const filtered = SINDHUDURG_AREAS.filter(a =>
         a.name.toLowerCase().includes(text.toLowerCase())
       );
       setSuggestions(filtered);
@@ -105,7 +105,7 @@ const AdminAddCrimeScreen = ({ navigation }) => {
       setToLocation(item.name);
       setDestLocation({ latitude: item.lat, longitude: item.lng });
     }
-    
+
     setSuggestions([]);
   };
 
@@ -119,12 +119,12 @@ const AdminAddCrimeScreen = ({ navigation }) => {
 
   const smartSnap = async () => {
     if (!pickedLocation || !destLocation) return;
-    
+
     try {
       const url = `https://router.project-osrm.org/route/v1/driving/${pickedLocation.longitude},${pickedLocation.latitude};${destLocation.longitude},${destLocation.latitude}?overview=full&geometries=geojson`;
       const response = await fetch(url);
       const data = await response.json();
-      
+
       if (data.routes && data.routes.length > 0) {
         const coords = data.routes[0].geometry.coordinates.map(c => ({
           latitude: c[1],
@@ -157,10 +157,10 @@ const AdminAddCrimeScreen = ({ navigation }) => {
         Alert.alert('Permission Denied', 'GPS permission is required to record roads.');
         return;
       }
-      
+
       setRecordedPath([]); // Clear old path
       setIsRecording(true);
-      
+
       watchSubscription.current = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High,
@@ -218,8 +218,8 @@ const AdminAddCrimeScreen = ({ navigation }) => {
         name: finalName,
         latitude: mode === 'ROAD' && recordedPath.length > 0 ? recordedPath[0].latitude : pickedLocation.latitude,
         longitude: mode === 'ROAD' && recordedPath.length > 0 ? recordedPath[0].longitude : pickedLocation.longitude,
-        destLatitude: mode === 'ROAD' && recordedPath.length > 0 ? recordedPath[recordedPath.length-1].latitude : (mode === 'ROAD' ? destLocation.latitude : null),
-        destLongitude: mode === 'ROAD' && recordedPath.length > 0 ? recordedPath[recordedPath.length-1].longitude : (mode === 'ROAD' ? destLocation.longitude : null),
+        destLatitude: mode === 'ROAD' && recordedPath.length > 0 ? recordedPath[recordedPath.length - 1].latitude : (mode === 'ROAD' ? destLocation.latitude : null),
+        destLongitude: mode === 'ROAD' && recordedPath.length > 0 ? recordedPath[recordedPath.length - 1].longitude : (mode === 'ROAD' ? destLocation.longitude : null),
         pathData: mode === 'ROAD' && recordedPath.length > 0 ? JSON.stringify(recordedPath) : null,
         caseCount: parseInt(caseCount),
         crimeType,
@@ -244,9 +244,9 @@ const AdminAddCrimeScreen = ({ navigation }) => {
     suggestions.length > 0 && (
       <View style={styles.suggestionContainer}>
         {suggestions.map((item, index) => (
-          <TouchableOpacity 
-            key={index} 
-            style={styles.suggestionItem} 
+          <TouchableOpacity
+            key={index}
+            style={styles.suggestionItem}
             onPress={() => selectSuggestion(item, field)}
           >
             <MapPin size={14} color="#FFD700" />
@@ -258,8 +258,8 @@ const AdminAddCrimeScreen = ({ navigation }) => {
   );
 
   const QuickTag = ({ label, icon: Icon }) => (
-    <TouchableOpacity 
-      style={styles.tag} 
+    <TouchableOpacity
+      style={styles.tag}
       onPress={() => {
         const cleanLabel = label.split(' ').slice(1).join(' ') || label;
         setCrimeType(prev => {
@@ -294,15 +294,15 @@ const AdminAddCrimeScreen = ({ navigation }) => {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.modeSelector}>
-            <TouchableOpacity 
-              style={[styles.modeOp, mode === 'AREA' && styles.modeOpActive]} 
+            <TouchableOpacity
+              style={[styles.modeOp, mode === 'AREA' && styles.modeOpActive]}
               onPress={() => setMode('AREA')}
             >
               <MapPin size={18} color={mode === 'AREA' ? '#000' : '#888'} />
               <Text style={[styles.modeText, mode === 'AREA' && styles.modeTextActive]}>Single Area</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.modeOp, mode === 'ROAD' && styles.modeOpActive]} 
+            <TouchableOpacity
+              style={[styles.modeOp, mode === 'ROAD' && styles.modeOpActive]}
               onPress={() => setMode('ROAD')}
             >
               <AlertTriangle size={18} color={mode === 'ROAD' ? '#000' : '#888'} />
@@ -313,15 +313,15 @@ const AdminAddCrimeScreen = ({ navigation }) => {
           {mode === 'ROAD' && (
             <View style={[styles.recordingCard, isRecording && styles.recordingCardActive]}>
               <View style={styles.recHeader}>
-                  <View style={[styles.recDot, isRecording && styles.recDotActive]} />
-                  <Text style={styles.recTitle}>{isRecording ? 'LIVE RECORDING ROAD...' : 'GPS Road Tracking'}</Text>
+                <View style={[styles.recDot, isRecording && styles.recDotActive]} />
+                <Text style={styles.recTitle}>{isRecording ? 'LIVE RECORDING ROAD...' : 'GPS Road Tracking'}</Text>
               </View>
               <Text style={styles.recDesc}>
-                {isRecording 
+                {isRecording
                   ? `Logged ${recordedPath.length} pins. Keep driving to trace the curves.`
                   : 'Drive and record the exact path of the dangerous road.'}
               </Text>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.recBtn, isRecording ? styles.recBtnStop : styles.recBtnStart]}
                 onPress={toggleRecording}
               >
@@ -338,7 +338,7 @@ const AdminAddCrimeScreen = ({ navigation }) => {
               <Text style={styles.label}>Area Name</Text>
               <View style={styles.inputWrapper}>
                 <MapPin size={20} color="#666" style={{ marginRight: 10 }} />
-                <TextInput 
+                <TextInput
                   style={styles.input}
                   placeholder="e.g. Sawantwadi Market"
                   placeholderTextColor="#444"
@@ -354,7 +354,7 @@ const AdminAddCrimeScreen = ({ navigation }) => {
                 <Text style={styles.label}>Starting Point</Text>
                 <View style={styles.inputWrapper}>
                   <MapPin size={20} color="#666" style={{ marginRight: 10 }} />
-                  <TextInput 
+                  <TextInput
                     style={styles.input}
                     placeholder="e.g. Kondura"
                     placeholderTextColor="#444"
@@ -373,7 +373,7 @@ const AdminAddCrimeScreen = ({ navigation }) => {
                 <Text style={styles.label}>Destination Point</Text>
                 <View style={styles.inputWrapper}>
                   <MapPin size={20} color="#666" style={{ marginRight: 10 }} />
-                  <TextInput 
+                  <TextInput
                     style={styles.input}
                     placeholder="e.g. Malewad"
                     placeholderTextColor="#444"
@@ -460,7 +460,7 @@ const AdminAddCrimeScreen = ({ navigation }) => {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <View style={[styles.inputWrapper, { flex: 1, marginRight: 10 }]}>
                 <Clock size={16} color="#666" style={{ marginRight: 8 }} />
-                <TextInput 
+                <TextInput
                   style={styles.input}
                   placeholder="10:00 PM"
                   placeholderTextColor="#444"
@@ -470,7 +470,7 @@ const AdminAddCrimeScreen = ({ navigation }) => {
               </View>
               <View style={[styles.inputWrapper, { flex: 1 }]}>
                 <Moon size={16} color="#666" style={{ marginRight: 8 }} />
-                <TextInput 
+                <TextInput
                   style={styles.input}
                   placeholder="04:00 AM"
                   placeholderTextColor="#444"
@@ -485,7 +485,7 @@ const AdminAddCrimeScreen = ({ navigation }) => {
             <Text style={styles.label}>Number of Cases Filed</Text>
             <View style={styles.inputWrapper}>
               <ClipboardList size={20} color="#666" style={{ marginRight: 10 }} />
-              <TextInput 
+              <TextInput
                 style={styles.input}
                 placeholder="Total cases"
                 placeholderTextColor="#444"
@@ -500,7 +500,7 @@ const AdminAddCrimeScreen = ({ navigation }) => {
             <Text style={styles.label}>{mode === 'ROAD' ? 'Road Hazard / Crime Type' : 'Danger / Crime Type'}</Text>
             <View style={styles.inputWrapper}>
               <ShieldAlert size={20} color="#666" style={{ marginRight: 10 }} />
-              <TextInput 
+              <TextInput
                 style={styles.input}
                 placeholder={mode === 'ROAD' ? "e.g. Sharp Turn Ahead, Accidents" : "e.g. Deep Water Danger, Harassment"}
                 placeholderTextColor="#444"
@@ -509,23 +509,23 @@ const AdminAddCrimeScreen = ({ navigation }) => {
               />
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
-              {(mode === 'ROAD' 
+              {(mode === 'ROAD'
                 ? ['Sharp Turn Ahead', 'Accident Prone', 'Blind Corner', 'No Streetlights']
                 : ['Deep Water Danger', 'Unsafe Swimming', 'Theft', 'Harassment']).map((sugg, i) => (
-                <TouchableOpacity 
-                  key={i} 
-                  style={[styles.quickSuggChip, crimeType === sugg && styles.quickSuggChipActive]}
-                  onPress={() => setCrimeType(sugg)}
-                >
-                  <Text style={[styles.quickSuggText, crimeType === sugg && styles.quickSuggTextActive]}>{sugg}</Text>
-                </TouchableOpacity>
-              ))}
+                  <TouchableOpacity
+                    key={i}
+                    style={[styles.quickSuggChip, crimeType === sugg && styles.quickSuggChipActive]}
+                    onPress={() => setCrimeType(sugg)}
+                  >
+                    <Text style={[styles.quickSuggText, crimeType === sugg && styles.quickSuggTextActive]}>{sugg}</Text>
+                  </TouchableOpacity>
+                ))}
             </ScrollView>
           </View>
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Detailed Description</Text>
-            <TextInput 
+            <TextInput
               style={[styles.input, styles.textArea]}
               placeholder="What specifically happened here?"
               placeholderTextColor="#444"
@@ -536,8 +536,8 @@ const AdminAddCrimeScreen = ({ navigation }) => {
             />
           </View>
 
-          <TouchableOpacity 
-            style={[styles.submitBtn, loading && { opacity: 0.7 }]} 
+          <TouchableOpacity
+            style={[styles.submitBtn, loading && { opacity: 0.7 }]}
             onPress={handleAddZone}
             disabled={loading}
           >
@@ -562,7 +562,7 @@ const AdminAddCrimeScreen = ({ navigation }) => {
                 <Activity size={18} color={isRecording ? '#fff' : '#000'} />
                 <Text style={[styles.gpsBtnText, { color: isRecording ? '#fff' : '#000' }]}>{isRecording ? 'Stop Recording' : 'Start GPS Trace'}</Text>
               </TouchableOpacity>
-              
+
               {recordedPath.length > 0 && (
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                   <TouchableOpacity style={[styles.gpsBtn, { backgroundColor: '#333', borderBottomWidth: 0, paddingHorizontal: 15 }]} onPress={() => setRecordedPath(prev => prev.slice(0, -1))}>
@@ -574,9 +574,9 @@ const AdminAddCrimeScreen = ({ navigation }) => {
                 </View>
               )}
             </View>
-            
+
             <View style={styles.mapFrame}>
-               <MapView
+              <MapView
                 style={StyleSheet.absoluteFillObject}
                 initialRegion={SINDHUDURG_COORDS}
                 onPress={(e) => {
@@ -586,7 +586,7 @@ const AdminAddCrimeScreen = ({ navigation }) => {
                     setPickedLocation(e.nativeEvent.coordinate);
                   }
                 }}
-               >
+              >
                 {/* Sindhudurg District Boundary Outline */}
                 <Polygon
                   coordinates={SINDHUDURG_BOUNDARY}
@@ -597,21 +597,36 @@ const AdminAddCrimeScreen = ({ navigation }) => {
                 />
                 {recordedPath.length > 0 ? (
                   <>
-                    <Polyline 
+                    <Polyline
                       coordinates={recordedPath}
-                      strokeColor="#FFD700"
-                      strokeWidth={6}
+                      strokeColor={(() => {
+                        const count = parseInt(caseCount) || 0;
+                        if (count > 20) return '#EF4444'; // Red
+                        if (count > 10) return '#F59E0B'; // Orange
+                        return '#10B981'; // Dark Green
+                      })()}
+                      strokeWidth={8}
+                      lineJoin="round"
+                      lineCap="round"
                     />
-                    <Marker coordinate={recordedPath[0]} title="Start">
-                        <View style={{ backgroundColor: '#FFD700', padding: 4, borderRadius: 10, borderWidth: 2, borderColor: '#000' }}>
-                           <MapPin size={12} color="#000" />
-                        </View>
-                    </Marker>
-                    <Marker coordinate={recordedPath[recordedPath.length-1]} title="Current End">
-                        <View style={{ backgroundColor: '#FF4444', padding: 4, borderRadius: 10, borderWidth: 2, borderColor: '#fff' }}>
-                           <MapPin size={12} color="#fff" />
-                        </View>
-                    </Marker>
+                    {(() => {
+                      const count = parseInt(caseCount) || 0;
+                      const activeColor = count > 20 ? '#EF4444' : count > 10 ? '#F59E0B' : '#10B981';
+                      return (
+                        <>
+                          <Marker coordinate={recordedPath[0]} title="Start">
+                            <View style={{ backgroundColor: activeColor, padding: 4, borderRadius: 10, borderWidth: 2, borderColor: '#fff' }}>
+                              <MapPin size={12} color="#fff" />
+                            </View>
+                          </Marker>
+                          <Marker coordinate={recordedPath[recordedPath.length - 1]} title="Current End">
+                            <View style={{ backgroundColor: activeColor, padding: 4, borderRadius: 10, borderWidth: 2, borderColor: '#fff' }}>
+                              <MapPin size={12} color="#fff" />
+                            </View>
+                          </Marker>
+                        </>
+                      );
+                    })()}
                   </>
                 ) : (
                   <>
@@ -619,12 +634,12 @@ const AdminAddCrimeScreen = ({ navigation }) => {
                     {mode === 'ROAD' && <Marker coordinate={destLocation} pinColor="#FF4444" title="End" />}
                   </>
                 )}
-               </MapView>
-               <View style={styles.mapTip}>
-                 <Text style={styles.mapTipText}>
-                   {mode === 'ROAD' ? `Tracing: ${recordedPath.length} points logged` : 'Tap to set location'}
-                 </Text>
-               </View>
+              </MapView>
+              <View style={styles.mapTip}>
+                <Text style={styles.mapTipText}>
+                  {mode === 'ROAD' ? `Tracing: ${recordedPath.length} points logged` : 'Tap to set location'}
+                </Text>
+              </View>
             </View>
             <TouchableOpacity style={styles.confirmBtn} onPress={() => setMapModalVisible(false)}>
               <Text style={styles.confirmText}>Confirm & Save Road Shape</Text>

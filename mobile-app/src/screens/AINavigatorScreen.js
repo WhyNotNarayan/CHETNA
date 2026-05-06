@@ -135,10 +135,25 @@ export default function AINavigatorScreen({ navigation }) {
     if (!searchQuery.trim()) return;
     setIsSearching(true);
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&limit=5&countrycodes=in`, { headers: { 'User-Agent': 'ChetnaApp/1.0' } });
+      // 🎯 Photon Search: Much smarter fuzzy search that finds small villages like Andurle
+      const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(searchQuery)}&limit=10&lat=${currentLocation?.latitude || 16.0}&lon=${currentLocation?.longitude || 73.6}&bbox=73.3,15.6,74.2,16.5`;
+
+      const response = await fetch(url);
       const data = await response.json();
-      setSearchResults(data);
-    } catch (e) { Alert.alert('Search Error', 'Could not search.'); }
+
+      // Convert Photon GeoJSON to the format the app expects
+      const formatted = data.features.map(f => ({
+        display_name: `${f.properties.name || ''} ${f.properties.city || f.properties.district || ''} ${f.properties.state || ''}`.trim(),
+        lat: f.geometry.coordinates[1],
+        lon: f.geometry.coordinates[0],
+        name: f.properties.name || 'Unknown'
+      })).filter(item => item.display_name.length > 0);
+
+      setSearchResults(formatted);
+    } catch (e) {
+      console.error('Search error:', e);
+      Alert.alert('Search Error', 'Could not search right now.');
+    }
     setIsSearching(false);
   };
 
@@ -173,7 +188,7 @@ export default function AINavigatorScreen({ navigation }) {
 
         // 🎯 NEW: Filter danger zones to only those appearing on any of the 3 routes
         const activeOnRoutes = dangerZones.filter(zone => {
-          return processed.some(route => 
+          return processed.some(route =>
             route.coords.some(pt => getDistance(pt.latitude, pt.longitude, zone.latitude, zone.longitude) <= (zone.radius || 400))
           );
         });
@@ -236,9 +251,12 @@ export default function AINavigatorScreen({ navigation }) {
 
   const getZoneColor = (zone) => {
     const type = (zone.crimeType || '').toLowerCase();
-    if (type.includes('sharp')) return '#FF6B00';
-    if (zone.riskLevel >= 4) return '#FF1744';
-    return '#FFD600';
+    if (type.includes('sharp')) return '#F59E0B'; // Sharp turns are cautionary (Orange)
+    
+    const count = zone.caseCount || 0;
+    if (count > 20) return '#EF4444'; // Red (Danger)
+    if (count > 10) return '#F59E0B'; // Orange (Warning)
+    return '#10B981'; // Dark Green (Low Risk)
   };
 
   return (
