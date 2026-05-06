@@ -154,10 +154,13 @@ export default function RegisterScreen({ navigation }) {
 
   return (
     <LinearGradient colors={['#fff', '#fee0f4', '#fce3eb']} style={styles.container}>
-      <FirebaseRecaptchaVerifierModal
-        ref={recaptchaVerifier}
-        firebaseConfig={firebaseConfig}
-      />
+      {Platform.OS !== 'web' && (
+        <FirebaseRecaptchaVerifierModal
+          ref={recaptchaVerifier}
+          firebaseConfig={firebaseConfig}
+          attemptInvisibleVerification={true}
+        />
+      )}
       <SafeAreaView style={{ flex: 1 }}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
@@ -308,9 +311,9 @@ export default function RegisterScreen({ navigation }) {
                       <Text style={styles.label}>Enter 6-Digit OTP</Text>
                       
                       <View style={styles.otpContainer}>
-                        {[...Array(6)].map((_, i) => (
-                          <View key={i} style={[styles.otpBox, otp.length === i && styles.otpBoxActive]}>
-                            <Text style={styles.otpText}>{otp[i] || ''}</Text>
+                        {Array.from({ length: 6 }).map((_, i) => (
+                          <View key={i} style={[styles.otpBox, otp && otp.length === i && styles.otpBoxActive]}>
+                            <Text style={styles.otpText}>{(otp && otp[i]) || ''}</Text>
                           </View>
                         ))}
                         <TextInput

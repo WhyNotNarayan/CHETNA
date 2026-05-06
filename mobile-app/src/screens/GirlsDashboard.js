@@ -1,14 +1,30 @@
-import React, { useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Dimensions, Alert } from 'react-native';
+import React, { useContext, useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Dimensions, Alert, Platform } from 'react-native';
 import { AlertCircle, Shield, Navigation, Newspaper, Mic, Camera, LogOut } from 'lucide-react-native';
 import { useSafetyMonitor } from '../hooks/useSafetyMonitor';
 import { AuthContext } from '../context/AuthContext';
+import api from '../utils/api';
 
 const { width } = Dimensions.get('window');
 
 export default function GirlsDashboard() {
   const { currentZone } = useSafetyMonitor();
   const { logout, userData } = useContext(AuthContext);
+  const [news, setNews] = useState([]);
+
+  useEffect(() => {
+    const fetchNews = async () => {
+      try {
+        const response = await api.get('/news/latest');
+        if (response.data.success) setNews(response.data.news);
+      } catch (e) {}
+    };
+    fetchNews();
+
+    // Auto-refresh news for users every 60 seconds
+    const interval = setInterval(fetchNews, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to logout?', [
@@ -76,8 +92,16 @@ export default function GirlsDashboard() {
           <TouchableOpacity><Text style={styles.viewAll}>View All</Text></TouchableOpacity>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.newsScroll}>
-          <NewsCard title="New Red Zone" content="Increased theft reports near Central Park." time="2h ago" />
-          <NewsCard title="Police Alert" content="Patrols increased in Subhash Nagar." time="5h ago" />
+          {news.map(item => (
+            <NewsCard 
+              key={item.id} 
+              title={item.title} 
+              content={item.content} 
+              time={new Date(item.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} 
+              type={item.type}
+            />
+          ))}
+          {news.length === 0 && <Text style={{ color: '#888', margin: 20 }}>Checking for updates...</Text>}
         </ScrollView>
 
       </ScrollView>
@@ -92,9 +116,11 @@ const ActionItem = ({ icon, label }) => (
   </TouchableOpacity>
 );
 
-const NewsCard = ({ title, content, time }) => (
-  <View style={styles.newsCard}>
-    <Text style={styles.newsTag}>NEWS</Text>
+const NewsCard = ({ title, content, time, type }) => (
+  <View style={[styles.newsCard, type === 'ACCIDENT' && { borderColor: '#FF4444', borderWidth: 1 }]}>
+    <View style={[styles.newsTagContainer, { backgroundColor: type === 'ACCIDENT' ? '#FF4444' : '#6200ee' }]}>
+       <Text style={styles.newsTagWhite}>{type || 'NEWS'}</Text>
+    </View>
     <Text style={styles.newsTitle}>{title}</Text>
     <Text style={styles.newsContent}>{content}</Text>
     <Text style={styles.newsTime}>{time}</Text>
@@ -183,17 +209,23 @@ const styles = StyleSheet.create({
   actionsGrid: { 
     flexDirection: 'row', 
     flexWrap: 'wrap', 
-    justifyContent: 'space-between',
-    marginBottom: 30
+    justifyContent: 'flex-start', // 🎯 Changed for better grid alignment
+    marginBottom: 30,
+    gap: 15, // 🎯 Use gap for spacing
   },
   actionItem: {
-    width: (width - 60) / 2,
+    // 🎯 Smart width: 2 columns on mobile, up to 4 on web
+    width: Platform.OS === 'web' ? '23%' : '47%', 
     backgroundColor: 'white',
     padding: 20,
     borderRadius: 20,
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 5,
     elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
   },
   actionIcon: { marginBottom: 10 },
   actionLabel: { fontSize: 14, fontWeight: '600', color: '#333' },
@@ -211,7 +243,8 @@ const styles = StyleSheet.create({
     marginRight: 15,
     elevation: 2,
   },
-  newsTag: { color: '#ff4d4d', fontSize: 10, fontWeight: '800', marginBottom: 5 },
+  newsTagContainer: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5, marginBottom: 8 },
+  newsTagWhite: { color: 'white', fontSize: 9, fontWeight: '800' },
   newsTitle: { fontSize: 16, fontWeight: '700', marginBottom: 5 },
   newsContent: { fontSize: 13, color: '#666', lineHeight: 18 },
   newsTime: { fontSize: 11, color: '#999', marginTop: 10 }
