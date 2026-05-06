@@ -1,17 +1,13 @@
 const prisma = require('../lib/prisma');
 
 // Function to calculate risk level based on case count
-// 1-10: 1 (Green)
-// 11-20: 2 (Yellow)
-// 21-30: 3 (Orange)
-// 31-40: 4 (Light Red)
-// 41+: 5 (Dark Red)
+// 0-10: 1 (Green)
+// 11-20: 2 (Orange)
+// 21+: 3 (Red)
 const calculateRiskLevel = (count) => {
   if (count <= 10) return 1;
   if (count <= 20) return 2;
-  if (count <= 30) return 3;
-  if (count <= 40) return 4;
-  return 5;
+  return 3;
 };
 
 exports.addRedZone = async (req, res) => {
@@ -32,7 +28,7 @@ exports.addRedZone = async (req, res) => {
         destLatitude: destLatitude ? parseFloat(destLatitude) : null,
         destLongitude: destLongitude ? parseFloat(destLongitude) : null,
         pathData: pathData || null,
-        riskLevel: riskLevel || calculateRiskLevel(caseCount || 0),
+        riskLevel: calculateRiskLevel(parseInt(caseCount) || 0),
         caseCount: parseInt(caseCount) || 0,
         crimeType,
         description,
@@ -107,23 +103,114 @@ exports.getPendingSecretCops = async (req, res) => {
     });
     res.json({ success: true, users });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to fetch pending applications' });
+    console.error('CRITICAL ERROR [getPendingSecretCops]:', error);
+    res.status(500).json({ success: false, message: 'Server Error: Check User table schema', error: error.message });
   }
 };
 
 exports.verifySecretCop = async (req, res) => {
   try {
     const { userId, action } = req.body;
-
     const user = await prisma.user.update({
       where: { id: userId },
-      data: {
-        isVerified: action === 'approve'
-      }
+      data: { isVerified: action === 'approve' }
     });
-
     res.json({ success: true, message: `User ${action === 'approve' ? 'verified' : 'rejected'}` });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to verify user' });
+    console.error('CRITICAL ERROR [verifySecretCop]:', error);
+    res.status(500).json({ success: false, message: 'Server Error: Verify User failed', error: error.message });
+  }
+};
+
+exports.getIntelRequests = async (req, res) => {
+  try {
+    const requests = await prisma.hazardSuggestion.findMany({
+      where: { status: 'PENDING' },
+      include: {
+        user: {
+          select: {
+            fullName: true,
+            phone: true,
+            address: true,
+            level: true,
+            awards: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json({ success: true, requests });
+  } catch (error) {
+    console.error('CRITICAL ERROR [getIntelRequests]:', error);
+    res.status(500).json({ success: false, message: 'Server Error: Check HazardSuggestion schema', error: error.message });
+  }
+};
+
+exports.verifyIntel = async (req, res) => {
+  try {
+    const { reportId, action } = req.body;
+
+    const report = await prisma.hazardSuggestion.findUnique({
+      where: { id: reportId },
+      include: { user: true }
+    });
+
+    if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
+
+    if (action === 'approve') {
+      // 1. Mark report as APPROVED
+      await prisma.hazardSuggestion.update({
+        where: { id: reportId },
+        data: { status: 'APPROVED' }
+      });
+
+      // 2. Create a live RedZone with correctly calculated risk level
+      await prisma.redZone.create({
+        data: {
+          name: report.name,
+          latitude: report.latitude,
+          longitude: report.longitude,
+          destLatitude: report.destLatitude,
+          destLongitude: report.destLongitude,
+          pathData: report.pathData,
+          startTime: report.startTime,
+          endTime: report.endTime,
+          type: report.type,
+          description: report.description,
+          riskLevel: calculateRiskLevel(report.caseCount || 0),
+          caseCount: report.caseCount || 0,
+          isVerified: true
+        }
+      });
+
+      // 3. User Level UP + Award UP
+      await prisma.user.update({
+        where: { id: report.userId },
+        data: {
+          level: { increment: 1 },
+          awards: { increment: 1 }
+        }
+      });
+
+    } else if (action === 'reject') {
+      // 1. Mark as REJECTED
+      await prisma.hazardSuggestion.update({
+        where: { id: reportId },
+        data: { status: 'REJECTED' }
+      });
+
+      // 2. User Level DOWN (Min level 1)
+      if (report.user && report.user.level > 1) {
+        await prisma.user.update({
+          where: { id: report.userId },
+          data: { level: { decrement: 1 } }
+        });
+      }
+    }
+
+    res.json({ success: true, message: `Report ${action}d successfully` });
+  } catch (error) {
+    console.error('Verify Intel Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to process verification' });
   }
 };
