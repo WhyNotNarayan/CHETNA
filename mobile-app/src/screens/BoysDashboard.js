@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { 
-  View, 
-  Text, 
-  ScrollView, 
-  TouchableOpacity, 
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
   StyleSheet,
   SafeAreaView,
   Dimensions,
@@ -15,12 +15,12 @@ import {
   TextInput,
   Modal
 } from 'react-native';
-import { 
-  ShieldAlert, 
-  Map as MapIcon, 
-  User, 
-  MessageSquare, 
-  ShieldCheck, 
+import {
+  ShieldAlert,
+  Map as MapIcon,
+  User,
+  MessageSquare,
+  ShieldCheck,
   Navigation,
   PlusCircle,
   MapPin,
@@ -68,7 +68,7 @@ export default function BoysDashboard({ navigation }) {
   const { logout, userData } = useContext(AuthContext);
   const { t, lang, changeLanguage } = useContext(LanguageContext);
   const { theme, toggleTheme, themeMode } = useContext(ThemeContext);
-  
+
   const [news, setNews] = useState([]);
   const [activeAlerts, setActiveAlerts] = useState([]);
   const [activeTab, setActiveTab] = useState('home');
@@ -81,12 +81,12 @@ export default function BoysDashboard({ navigation }) {
     mobile: userData?.mobile || '91XXXXXX78',
     address: userData?.address || 'Sindhudurg, Maharashtra'
   });
-  
+
   // Reporting States
   const [showReportModal, setShowReportModal] = useState(false);
-  const [reportType, setReportType] = useState('safe'); 
+  const [reportType, setReportType] = useState('safe');
   const [reportReason, setReportReason] = useState('');
-  const [locationType, setLocationType] = useState('live'); 
+  const [locationType, setLocationType] = useState('live');
   const [userRank, setUserRank] = useState({ level: 5, awards: 12, points: 450 });
 
   // Map Picking & Recording
@@ -133,7 +133,7 @@ export default function BoysDashboard({ navigation }) {
                 }
               });
             }
-          } catch (e) {}
+          } catch (e) { }
         }
       );
 
@@ -156,12 +156,12 @@ export default function BoysDashboard({ navigation }) {
     if (recordedPath.length < 2) return;
     const start = recordedPath[0];
     const end = recordedPath[recordedPath.length - 1];
-    
+
     try {
       const url = `https://router.project-osrm.org/route/v1/driving/${start.longitude},${start.latitude};${end.longitude},${end.latitude}?overview=full&geometries=geojson`;
       const response = await fetch(url);
       const data = await response.json();
-      
+
       if (data.routes && data.routes.length > 0) {
         const coords = data.routes[0].geometry.coordinates.map(c => ({
           latitude: c[1],
@@ -185,22 +185,22 @@ export default function BoysDashboard({ navigation }) {
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   };
 
   useEffect(() => {
     const fetchData = async () => {
-      if (!userData?.id) return; 
+      if (!userData?.id) return;
       try {
         const newsRes = await api.get('/news/latest').catch(() => null);
         if (newsRes?.data?.success) setNews(newsRes.data.news);
-        
+
         const alertRes = await api.get('/alerts/nearby').catch(() => null);
         if (alertRes?.data?.success) setActiveAlerts(alertRes.data.alerts);
-        
+
         const userRes = await api.get(`/auth/profile/${userData.id}`).catch(() => null);
         if (userRes?.data?.success) {
           setUserRank({
@@ -252,9 +252,9 @@ export default function BoysDashboard({ navigation }) {
       let finalLat, finalLng, finalDestLat, finalDestLng;
 
       if (locationType === 'live') {
-        const location = await Location.getCurrentPositionAsync({ 
+        const location = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
-          timeout: 5000 
+          timeout: 5000
         });
         finalLat = location.coords.latitude;
         finalLng = location.coords.longitude;
@@ -290,14 +290,16 @@ export default function BoysDashboard({ navigation }) {
 
       if (res.data.success) {
         Alert.alert("Success", res.data.message, [
-          { text: "OK", onPress: () => { 
-            setShowReportModal(false); 
-            setReportReason(''); 
-            setSelectedPoint(null);
-            setRecordedPath([]);
-            setCaseCount('0');
-            setSelectedTags([]);
-          } }
+          {
+            text: "OK", onPress: () => {
+              setShowReportModal(false);
+              setReportReason('');
+              setSelectedPoint(null);
+              setRecordedPath([]);
+              setCaseCount('0');
+              setSelectedTags([]);
+            }
+          }
         ]);
       }
     } catch (error) {
@@ -323,15 +325,15 @@ export default function BoysDashboard({ navigation }) {
         return;
       }
 
-      const location = await Location.getCurrentPositionAsync({ 
+      const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
         timeout: 5000
       });
-      
+
       const res = await api.post('/safety/suggest-hazard', {
         userId: userData.id,
         name: 'Sharp Turn',
-        latitude: location.coords.latitude, 
+        latitude: location.coords.latitude,
         longitude: location.coords.longitude,
         type: 'SHARP_TURN',
         description: 'Auto-reported sharp turn with live location',
@@ -373,7 +375,7 @@ export default function BoysDashboard({ navigation }) {
           </LinearGradient>
         </TouchableOpacity>
 
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.mapBtn, { backgroundColor: theme.card, borderColor: theme.border }]}
           onPress={() => navigation.navigate('AdminRedZones')}
         >
@@ -452,8 +454,8 @@ export default function BoysDashboard({ navigation }) {
     <ScrollView style={styles.tabView} showsVerticalScrollIndicator={false}>
       <Text style={[styles.tabTitle, { color: theme.text }]}>{t('intel_hub')}</Text>
       <Text style={styles.tabSub}>{t('rank_warning')}</Text>
-      
-      <TouchableOpacity 
+
+      <TouchableOpacity
         style={styles.reportCard}
         onPress={() => { setReportType('safe'); setShowReportModal(true); }}
       >
@@ -467,7 +469,7 @@ export default function BoysDashboard({ navigation }) {
         </LinearGradient>
       </TouchableOpacity>
 
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.reportCard}
         onPress={() => { setReportType('crime'); setShowReportModal(true); }}
       >
@@ -481,7 +483,7 @@ export default function BoysDashboard({ navigation }) {
         </LinearGradient>
       </TouchableOpacity>
 
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.reportCard}
         onPress={handleSharpTurn}
       >
@@ -519,7 +521,7 @@ export default function BoysDashboard({ navigation }) {
           <ShieldCheck color="#FFF" size={14} />
           <Text style={styles.honorText}>VERIFIED SECRET COP</Text>
         </LinearGradient>
-        
+
         <View style={[styles.bigAvatar, { backgroundColor: theme.primary }]}>
           <Text style={styles.avatarInitial}>{userData?.fullName?.[0] || 'C'}</Text>
         </View>
@@ -541,7 +543,7 @@ export default function BoysDashboard({ navigation }) {
         </View>
       </View>
 
-          {/* 🏁 LEADERBOARD PREVIEW */}
+      {/* 🏁 LEADERBOARD PREVIEW */}
       <View style={styles.leaderboardBox}>
         <Text style={styles.hubTitle}>TOP SECRET COPS</Text>
         {[
@@ -562,11 +564,11 @@ export default function BoysDashboard({ navigation }) {
           <Text style={styles.inputLabel}>{lang === 'mr' ? 'पूर्ण नाव' : 'FULL NAME'}</Text>
           <View style={[styles.inputBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <User size={18} color={theme.subtext} />
-            <TextInput 
-              style={[styles.input, { color: theme.text }]} 
-              value={profileForm.fullName} 
+            <TextInput
+              style={[styles.input, { color: theme.text }]}
+              value={profileForm.fullName}
               editable={isEditing}
-              onChangeText={(t) => setProfileForm({...profileForm, fullName: t})}
+              onChangeText={(t) => setProfileForm({ ...profileForm, fullName: t })}
             />
           </View>
         </View>
@@ -575,12 +577,12 @@ export default function BoysDashboard({ navigation }) {
           <Text style={styles.inputLabel}>{lang === 'mr' ? 'मोबाईल नंबर' : 'MOBILE NUMBER'}</Text>
           <View style={[styles.inputBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <Phone size={18} color={theme.subtext} />
-            <TextInput 
-              style={[styles.input, { color: theme.text }]} 
-              value={profileForm.mobile} 
+            <TextInput
+              style={[styles.input, { color: theme.text }]}
+              value={profileForm.mobile}
               editable={isEditing}
               keyboardType="phone-pad"
-              onChangeText={(t) => setProfileForm({...profileForm, mobile: t})}
+              onChangeText={(t) => setProfileForm({ ...profileForm, mobile: t })}
             />
           </View>
         </View>
@@ -589,11 +591,11 @@ export default function BoysDashboard({ navigation }) {
           <Text style={styles.inputLabel}>{lang === 'mr' ? 'पत्ता' : 'ADDRESS'}</Text>
           <View style={[styles.inputBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <MapPin size={18} color={theme.subtext} />
-            <TextInput 
-              style={[styles.input, { color: theme.text }]} 
-              value={profileForm.address} 
+            <TextInput
+              style={[styles.input, { color: theme.text }]}
+              value={profileForm.address}
               editable={isEditing}
-              onChangeText={(t) => setProfileForm({...profileForm, address: t})}
+              onChangeText={(t) => setProfileForm({ ...profileForm, address: t })}
             />
           </View>
         </View>
@@ -601,26 +603,26 @@ export default function BoysDashboard({ navigation }) {
         <View style={[styles.settingsHub, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <Text style={styles.hubTitle}>{t('settings')}</Text>
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.toggleBtn, lang === 'en' && { backgroundColor: theme.primary }]}
               onPress={() => changeLanguage('en')}
             >
               <Text style={[styles.toggleText, { color: lang === 'en' ? '#000' : theme.text }]}>English</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.toggleBtn, lang === 'mr' && { backgroundColor: theme.primary }]}
               onPress={() => changeLanguage('mr')}
             >
               <Text style={[styles.toggleText, { color: lang === 'mr' ? '#000' : theme.text }]}>मराठी</Text>
             </TouchableOpacity>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[styles.toggleBtn, lang === 'hi' && { backgroundColor: theme.primary }]}
               onPress={() => changeLanguage('hi')}
             >
               <Text style={[styles.toggleText, { color: lang === 'hi' ? '#000' : theme.text }]}>हिन्दी</Text>
             </TouchableOpacity>
           </View>
-          
+
           <TouchableOpacity style={[styles.settingRow, { marginTop: 20 }]} onPress={toggleTheme}>
             <View style={styles.settingIcon}><Zap size={18} color={theme.primary} /></View>
             <Text style={[styles.settingText, { color: theme.text }]}>{t('dark_mode')}: {themeMode.toUpperCase()}</Text>
@@ -639,7 +641,7 @@ export default function BoysDashboard({ navigation }) {
             <Text style={styles.saveBtnText}>{lang === 'mr' ? 'बदल जतन करा' : 'Save Changes'}</Text>
           </TouchableOpacity>
         )}
-        
+
         <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
           <Text style={styles.logoutText}>{lang === 'mr' ? 'लॉगआउट' : 'Logout Session'}</Text>
         </TouchableOpacity>
@@ -650,15 +652,15 @@ export default function BoysDashboard({ navigation }) {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       <StatusBar barStyle={themeMode === 'dark' ? 'light-content' : 'dark-content'} />
-      
+
       <View style={[styles.navTop, { borderBottomColor: theme.border }]}>
         <TouchableOpacity onPress={() => { setShowNewsModal(true); setHasNewNews(false); }} style={styles.newsBtn}>
           <Newspaper color={theme.text} size={24} />
           {hasNewNews && (
-            <LinearGradient 
-              colors={['#FF00FF', '#EF4444', '#8B5CF6', '#000000']} 
+            <LinearGradient
+              colors={['#FF00FF', '#EF4444', '#8B5CF6', '#000000']}
               style={styles.newsBadge}
-              start={{x:0, y:0}} end={{x:1, y:1}}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
             />
           )}
         </TouchableOpacity>
@@ -707,7 +709,7 @@ export default function BoysDashboard({ navigation }) {
               <View style={{ width: 28 }} />
             </View>
 
-            <ScrollView 
+            <ScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
               style={{ backgroundColor: theme.background }}
@@ -718,14 +720,14 @@ export default function BoysDashboard({ navigation }) {
               <View style={styles.inputGroup}>
                 <Text style={[styles.inputLabel, { color: theme.text }]}>{lang === 'mr' ? 'स्थान निवडा' : 'SELECT LOCATION'}</Text>
                 <View style={styles.locationToggle}>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={[styles.toggleBtn, locationType === 'live' && { backgroundColor: theme.primary, borderColor: theme.primary }]}
                     onPress={() => setLocationType('live')}
                   >
                     <LocateFixed color={locationType === 'live' ? '#000' : theme.subtext} size={18} />
                     <Text style={[styles.toggleText, { color: locationType === 'live' ? '#000' : theme.subtext }]}>{lang === 'mr' ? 'थेट स्थान' : 'Live GPS'}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={[styles.toggleBtn, locationType === 'manual' && { backgroundColor: theme.primary, borderColor: theme.primary }]}
                     onPress={() => { setLocationType('manual'); setShowMapPicker(true); }}
                   >
@@ -773,7 +775,7 @@ export default function BoysDashboard({ navigation }) {
                             <Text style={[styles.coordinateText, { color: theme.text }]}>
                               {recordedPath.length > 1 ? (lang === 'mr' ? 'अंतिम बिंदू' : 'End Point') : (lang === 'mr' ? 'अंतिम बिंदू नाही' : 'No End Point')}
                             </Text>
-                            <Text style={styles.coordinateSubText}>{recordedPath.length > 1 ? `${recordedPath[recordedPath.length-1].latitude.toFixed(4)}, ${recordedPath[recordedPath.length-1].longitude.toFixed(4)}` : (lang === 'mr' ? 'पूर्ण रस्ता चिन्हांकित करा' : 'Trace full road')}</Text>
+                            <Text style={styles.coordinateSubText}>{recordedPath.length > 1 ? `${recordedPath[recordedPath.length - 1].latitude.toFixed(4)}, ${recordedPath[recordedPath.length - 1].longitude.toFixed(4)}` : (lang === 'mr' ? 'पूर्ण रस्ता चिन्हांकित करा' : 'Trace full road')}</Text>
                           </View>
                         </View>
                         <ChevronRight size={20} color={theme.subtext} />
@@ -788,7 +790,7 @@ export default function BoysDashboard({ navigation }) {
                 <View style={styles.timeRow}>
                   <View style={[styles.timeInputGroup, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <Clock size={16} color={theme.primary} />
-                    <TextInput 
+                    <TextInput
                       style={[styles.timeInput, { color: theme.text }]}
                       placeholder="10 PM"
                       placeholderTextColor={theme.subtext}
@@ -799,7 +801,7 @@ export default function BoysDashboard({ navigation }) {
                   <Text style={{ color: theme.subtext, fontWeight: 'bold' }}>-</Text>
                   <View style={[styles.timeInputGroup, { backgroundColor: theme.card, borderColor: theme.border }]}>
                     <Clock size={16} color={theme.primary} />
-                    <TextInput 
+                    <TextInput
                       style={[styles.timeInput, { color: theme.text }]}
                       placeholder="4 AM"
                       placeholderTextColor={theme.subtext}
@@ -815,7 +817,7 @@ export default function BoysDashboard({ navigation }) {
                 <Text style={[styles.inputLabel, { color: theme.text }]}>{t('cases_filed')}</Text>
                 <View style={[styles.inputBox, { backgroundColor: theme.card, borderColor: theme.border }]}>
                   <AlertTriangle size={20} color={theme.primary} />
-                  <TextInput 
+                  <TextInput
                     style={[styles.input, { color: theme.text, fontSize: 18, fontWeight: 'bold' }]}
                     placeholder="0"
                     placeholderTextColor={theme.subtext}
@@ -824,7 +826,7 @@ export default function BoysDashboard({ navigation }) {
                     onChangeText={setCaseCount}
                   />
                 </View>
-                
+
                 {/* DYNAMIC RISK LEGEND DIRECTLY BELOW */}
                 <View style={[styles.riskLegendBox, { backgroundColor: theme.card + '50', borderColor: theme.border }]}>
                   <View style={styles.riskItem}>
@@ -846,14 +848,14 @@ export default function BoysDashboard({ navigation }) {
                 <Text style={[styles.inputLabel, { color: theme.text }]}>{lang === 'mr' ? 'त्वरीत सूचना' : 'QUICK SUGGESTIONS'}</Text>
                 <View style={styles.suggestRow}>
                   {['Sharp Turn', 'No Street Lights', 'High Crime Rate', 'Narrow Road', 'Deep Potholes', 'Isolated Area'].map((s, i) => (
-                    <TouchableOpacity 
-                      key={i} 
-                      style={[styles.suggestTag, selectedTags.includes(s) && { backgroundColor: theme.primary, borderColor: theme.primary }]} 
+                    <TouchableOpacity
+                      key={i}
+                      style={[styles.suggestTag, selectedTags.includes(s) && { backgroundColor: theme.primary, borderColor: theme.primary }]}
                       onPress={() => {
                         setSelectedTags(prev => {
-                            const newTags = prev.includes(s) ? prev.filter(t => t !== s) : [...prev, s];
-                            setReportReason(newTags.join(', '));
-                            return newTags;
+                          const newTags = prev.includes(s) ? prev.filter(t => t !== s) : [...prev, s];
+                          setReportReason(newTags.join(', '));
+                          return newTags;
                         });
                       }}
                     >
@@ -875,8 +877,8 @@ export default function BoysDashboard({ navigation }) {
                 />
               </View>
 
-              <TouchableOpacity 
-                style={[styles.submitBtn, { backgroundColor: theme.primary }]} 
+              <TouchableOpacity
+                style={[styles.submitBtn, { backgroundColor: theme.primary }]}
                 onPress={handleReportSubmit}
               >
                 <Text style={styles.submitBtnText}>{t('submit_admin')}</Text>
@@ -914,10 +916,10 @@ export default function BoysDashboard({ navigation }) {
             )}
 
             {reportType === 'crime' && recordedPath.map((p, i) => (
-              <Marker 
-                key={i} 
-                coordinate={p} 
-                pinColor={i === 0 ? "#10B981" : i === recordedPath.length - 1 ? "#EF4444" : "#FFD700"} 
+              <Marker
+                key={i}
+                coordinate={p}
+                pinColor={i === 0 ? "#10B981" : i === recordedPath.length - 1 ? "#EF4444" : "#FFD700"}
                 scaleX={0.5} scaleY={0.5}
               />
             ))}
@@ -930,12 +932,12 @@ export default function BoysDashboard({ navigation }) {
               />
             )}
           </MapView>
-          
+
           <View style={styles.mapInstruct}>
             <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
               {reportType === 'crime' && (
-                <TouchableOpacity 
-                  style={[styles.recordBtn, { backgroundColor: isRecording ? '#EF4444' : '#3B82F6' }]} 
+                <TouchableOpacity
+                  style={[styles.recordBtn, { backgroundColor: isRecording ? '#EF4444' : '#3B82F6' }]}
                   onPress={() => setIsRecording(!isRecording)}
                 >
                   <Text style={styles.recordBtnText}>
@@ -948,8 +950,8 @@ export default function BoysDashboard({ navigation }) {
               </TouchableOpacity>
             </View>
             <Text style={styles.instructText}>
-              {reportType === 'safe' 
-                ? 'Tap once to mark the safe area.' 
+              {reportType === 'safe'
+                ? 'Tap once to mark the safe area.'
                 : isRecording ? 'Riding... Path is being saved live!' : 'Tap multiple points on the map to draw the road.'}
             </Text>
           </View>
@@ -963,9 +965,9 @@ export default function BoysDashboard({ navigation }) {
             <Lock color={theme.primary} size={40} style={{ alignSelf: 'center', marginBottom: 15 }} />
             <Text style={[styles.modalTitle, { color: theme.text }]}>Verify Mobile</Text>
             <Text style={styles.modalSub}>Enter the 4-digit OTP sent to your phone to save changes.</Text>
-            <TextInput 
-              style={[styles.otpInput, { color: theme.text, borderColor: theme.border }]} 
-              placeholder="0 0 0 0" 
+            <TextInput
+              style={[styles.otpInput, { color: theme.text, borderColor: theme.border }]}
+              placeholder="0 0 0 0"
               keyboardType="number-pad"
               maxLength={4}
             />
@@ -1012,14 +1014,14 @@ export default function BoysDashboard({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  navTop: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    paddingHorizontal: 20, 
-    height: Platform.OS === 'ios' ? 100 : 85, 
+  navTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    height: Platform.OS === 'ios' ? 100 : 85,
     paddingTop: Platform.OS === 'ios' ? 40 : StatusBar.currentHeight + 10,
-    borderBottomWidth: 0.5 
+    borderBottomWidth: 0.5
   },
   logoText: { fontSize: 22, fontWeight: 'bold' },
   newsBtn: { padding: 5, position: 'relative' },
@@ -1078,7 +1080,7 @@ const styles = StyleSheet.create({
   radarHeader: { marginBottom: 20 },
   tabTitle: { fontSize: 24, fontWeight: '900' },
   tabSub: { color: '#8E8E8E', fontSize: 14, marginBottom: 30 },
-  
+
   radarContainer: { alignItems: 'center', marginTop: 40 },
   radarCircle: { width: 250, height: 250, borderRadius: 125, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
   radarCircleInner: { width: 150, height: 150, borderRadius: 75, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
@@ -1100,7 +1102,7 @@ const styles = StyleSheet.create({
   bigAvatar: { width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center', marginBottom: 15, elevation: 5 },
   avatarInitial: { fontSize: 40, fontWeight: 'bold', color: '#FFF' },
   profileName: { fontSize: 22, fontWeight: '900' },
-  
+
   settingsHub: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 25 },
   hubTitle: { fontSize: 11, fontWeight: '900', color: '#8E8E8E', marginBottom: 15, letterSpacing: 1 },
   settingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 18 },
@@ -1119,8 +1121,8 @@ const styles = StyleSheet.create({
   logoutBtn: { marginTop: 20, padding: 15, alignItems: 'center' },
   logoutText: { color: '#EF4444', fontWeight: '800' },
 
-  bottomNav: { 
-    position: 'absolute', bottom: 0, left: 0, right: 0, height: 70, flexDirection: 'row', 
+  bottomNav: {
+    position: 'absolute', bottom: 0, left: 0, right: 0, height: 70, flexDirection: 'row',
     justifyContent: 'space-around', alignItems: 'center', borderTopWidth: 0.5, paddingBottom: 10
   },
   navItem: { padding: 10 },
@@ -1131,7 +1133,7 @@ const styles = StyleSheet.create({
   rankVal: { fontSize: 24, fontWeight: '900', marginTop: 5 },
   rankLab: { fontSize: 10, fontWeight: '800', color: '#8E8E8E' },
   rankDivider: { width: 1, height: '100%', backgroundColor: '#8E8E8E33' },
-  
+
   leaderboardBox: { padding: 20, borderRadius: 20, backgroundColor: '#3B82F610', marginBottom: 25 },
   leaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   leaderRank: { width: 30, fontSize: 14, fontWeight: '900', color: '#8B5CF6' },
@@ -1144,7 +1146,7 @@ const styles = StyleSheet.create({
   locationToggle: { flexDirection: 'row', width: '100%', gap: 10, marginBottom: 15 },
   toggleBtn: { flex: 1, height: 45, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: '#8E8E8E44' },
   toggleText: { fontSize: 13, fontWeight: '700' },
-  
+
   timeSection: { width: '100%', marginBottom: 15 },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
   timeInputGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, height: 45, borderRadius: 12, borderWidth: 1, borderColor: '#8E8E8E33' },
@@ -1162,7 +1164,7 @@ const styles = StyleSheet.create({
   verifyBtn: { width: '100%', height: 55, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
   verifyBtnText: { color: '#000', fontWeight: '900', fontSize: 16 },
   cancelText: { color: '#8E8E8E', fontWeight: '700' },
-  
+
   // MAP PICKER
   mapHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, backgroundColor: '#111' },
   mapBackBtn: { padding: 5 },
@@ -1175,7 +1177,7 @@ const styles = StyleSheet.create({
   recordBtnText: { color: '#FFF', fontWeight: '900', fontSize: 13 },
   clearBtn: { flex: 1, backgroundColor: '#333', paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   clearBtnText: { color: '#FFF', fontWeight: '800', fontSize: 12 },
-  
+
   // NEW MODAL STYLES
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
   backBtn: { padding: 5 },
