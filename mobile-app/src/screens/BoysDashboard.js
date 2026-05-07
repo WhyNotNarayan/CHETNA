@@ -191,6 +191,9 @@ export default function BoysDashboard({ navigation }) {
     return R * c;
   };
 
+  const [leaderboard, setLeaderboard] = useState([]);
+  const [showFullLeaderboard, setShowFullLeaderboard] = useState(false);
+
   useEffect(() => {
     const fetchData = async () => {
       if (!userData?.id) return;
@@ -200,6 +203,9 @@ export default function BoysDashboard({ navigation }) {
 
         const alertRes = await api.get('/alerts/nearby').catch(() => null);
         if (alertRes?.data?.success) setActiveAlerts(alertRes.data.alerts);
+
+        const leaderRes = await api.get('/admin/leaderboard').catch(() => null);
+        if (leaderRes?.data?.success) setLeaderboard(leaderRes.data.leaderboard);
 
         const userRes = await api.get(`/auth/profile/${userData.id}`).catch(() => null);
         if (userRes?.data?.success) {
@@ -214,7 +220,7 @@ export default function BoysDashboard({ navigation }) {
       }
     };
     fetchData();
-    const interval = setInterval(fetchData, 10000);
+    const interval = setInterval(fetchData, 15000);
     return () => clearInterval(interval);
   }, [userData?.id]);
 
@@ -422,28 +428,89 @@ export default function BoysDashboard({ navigation }) {
     </ScrollView>
   );
 
+  const [nearbyCops, setNearbyCops] = useState([]);
+  const [loadingRadar, setLoadingRadar] = useState(false);
+
+  const fetchNearbyCops = async () => {
+    try {
+      setLoadingRadar(true);
+      const res = await api.get('/admin/verified-secret-cops'); // Reuse the admin endpoint for now
+      if (res.data.success) {
+        setNearbyCops(res.data.users.filter(u => u.id !== userData?.id));
+      }
+    } catch (e) {
+      console.log('Radar Fetch Error:', e);
+    } finally {
+      setLoadingRadar(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'search') {
+      fetchNearbyCops();
+    }
+  }, [activeTab]);
+
   const renderRadar = () => (
     <View style={styles.tabView}>
       <View style={styles.radarHeader}>
-        <Text style={[styles.tabTitle, { color: theme.text }]}>{t('radar')}</Text>
-        <Text style={styles.tabSub}>{t('nearby_helpers')}</Text>
-      </View>
-      <View style={styles.radarContainer}>
-        <View style={[styles.radarCircle, { borderColor: theme.primary + '44' }]}>
-          <View style={[styles.radarCircleInner, { borderColor: theme.primary + '88' }]}>
-            <View style={[styles.radarCenter, { backgroundColor: theme.primary }]}>
-              <User color="#000" size={20} />
-            </View>
-          </View>
+        <View>
+          <Text style={[styles.tabTitle, { color: theme.text }]}>{t('radar')}</Text>
+          <Text style={styles.tabSub}>{t('nearby_helpers')}</Text>
         </View>
-        <View style={styles.radarStats}>
-          <View style={styles.statBox}>
-            <Text style={[styles.statNum, { color: theme.primary }]}>03</Text>
-            <Text style={styles.statLabel}>{t('nearby_helpers')}</Text>
-          </View>
-          <View style={styles.statBox}>
-            <Text style={[styles.statNum, { color: '#EF4444' }]}>01</Text>
-            <Text style={styles.statLabel}>{t('crime_zones')}</Text>
+        <TouchableOpacity style={styles.refreshBtn} onPress={fetchNearbyCops}>
+          <RotateCcw size={20} color={theme.primary} />
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.radarMapContainer}>
+        <MapView
+          style={styles.radarMap}
+          initialRegion={mapRegion}
+          theme={themeMode === 'dark' ? 'dark' : 'light'}
+        >
+          {/* Current User */}
+          <Marker
+            coordinate={{ latitude: mapRegion.latitude, longitude: mapRegion.longitude }}
+            title={t('you')}
+          >
+            <View style={[styles.copMarker, styles.myMarker]}>
+              <User size={14} color="#000" />
+            </View>
+          </Marker>
+
+          {/* Other Cops */}
+          {nearbyCops.filter(u => u.latitude && u.longitude).map(cop => (
+            <Marker
+              key={cop.id}
+              coordinate={{ 
+                latitude: parseFloat(cop.latitude), 
+                longitude: parseFloat(cop.longitude) 
+              }}
+              title={cop.fullName}
+              description={`${cop.profession} • ${cop.status === 'LIVE' ? '📡 LIVE' : '🏠 BASE'}`}
+            >
+              <View style={[
+                styles.copMarker, 
+                { backgroundColor: cop.status === 'LIVE' ? '#10B981' : '#3B82F6' }
+              ]}>
+                <User size={14} color="#FFF" />
+              </View>
+            </Marker>
+          ))}
+        </MapView>
+        
+        <View style={styles.radarOverlay}>
+          <View style={styles.statRow}>
+            <View style={styles.statItem}>
+              <Text style={[styles.statValue, { color: theme.primary }]}>{nearbyCops.length}</Text>
+              <Text style={styles.statLabel}>{t('nearby_helpers')}</Text>
+            </View>
+            <View style={styles.statDivider} />
+            <View style={styles.statItem}>
+              <Text style={[styles.statValue, { color: '#EF4444' }]}>{activeAlerts.length}</Text>
+              <Text style={styles.statLabel}>{t('active_alerts')}</Text>
+            </View>
           </View>
         </View>
       </View>
@@ -544,20 +611,70 @@ export default function BoysDashboard({ navigation }) {
       </View>
 
       {/* 🏁 LEADERBOARD PREVIEW */}
-      <View style={styles.leaderboardBox}>
-        <Text style={styles.hubTitle}>TOP SECRET COPS</Text>
-        {[
-          { name: 'Sameer P.', level: 12, rank: 1 },
-          { name: 'Aniket R.', level: 10, rank: 2 },
-          { name: 'Rahul S.', level: 8, rank: 3 }
-        ].map((cop, idx) => (
-          <View key={idx} style={styles.leaderRow}>
-            <Text style={styles.leaderRank}>#{cop.rank}</Text>
-            <Text style={[styles.leaderName, { color: theme.text }]}>{cop.name}</Text>
-            <Text style={styles.leaderLevel}>Lvl {cop.level}</Text>
+      <TouchableOpacity 
+        style={styles.leaderboardBox} 
+        onPress={() => setShowFullLeaderboard(true)}
+      >
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+          <Text style={styles.hubTitle}>TOP SECRET COPS</Text>
+          <Text style={{ fontSize: 10, color: theme.primary, fontWeight: 'bold' }}>VIEW ALL</Text>
+        </View>
+        
+        {leaderboard.slice(0, 3).map((cop, idx) => (
+          <View key={cop.id} style={styles.leaderRow}>
+            <Text style={[styles.leaderRank, { color: idx === 0 ? '#FFD700' : idx === 1 ? '#C0C0C0' : '#CD7F32' }]}>
+              #{idx + 1}
+            </Text>
+            <Text style={[styles.leaderName, { color: theme.text }]}>{cop.fullName}</Text>
+            <View style={styles.leaderStats}>
+              <Text style={styles.leaderLevel}>Lvl {cop.level}</Text>
+              <Text style={styles.leaderPoints}>{cop.points} pts</Text>
+            </View>
           </View>
         ))}
-      </View>
+
+        {leaderboard.length === 0 && (
+          <Text style={{ color: theme.subtext, fontSize: 12, textAlign: 'center' }}>No verified cops yet</Text>
+        )}
+      </TouchableOpacity>
+
+      {/* FULL LEADERBOARD MODAL */}
+      <Modal visible={showFullLeaderboard} animationType="slide">
+        <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+          <View style={[styles.navTop, { borderBottomColor: theme.border }]}>
+            <TouchableOpacity onPress={() => setShowFullLeaderboard(false)}>
+              <ChevronLeft color={theme.text} size={28} />
+            </TouchableOpacity>
+            <Text style={[styles.logoText, { color: theme.text }]}>Hall of Fame</Text>
+            <View style={{ width: 28 }} />
+          </View>
+
+          <ScrollView contentContainerStyle={{ padding: 20 }}>
+            <View style={styles.leaderboardHeader}>
+              <Trophy color="#F59E0B" size={40} />
+              <Text style={[styles.leaderTitle, { color: theme.text }]}>Sindhudurg's Best</Text>
+              <Text style={styles.leaderSub}>Ranked by bravery and reports</Text>
+            </View>
+
+            {leaderboard.map((cop, idx) => (
+              <View key={cop.id} style={[styles.fullLeaderRow, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                <View style={[styles.rankBadge, { backgroundColor: idx < 3 ? '#F59E0B20' : 'transparent' }]}>
+                  <Text style={[styles.rankText, { color: idx === 0 ? '#FFD700' : idx === 1 ? '#C0C0C0' : idx === 2 ? '#CD7F32' : theme.subtext }]}>
+                    #{idx + 1}
+                  </Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 15 }}>
+                  <Text style={[styles.fullLeaderName, { color: theme.text }]}>{cop.fullName}</Text>
+                  <Text style={styles.fullLeaderLevel}>Veteran Secret Cop • Level {cop.level}</Text>
+                </View>
+                <View style={styles.pointsBadge}>
+                  <Text style={styles.pointsText}>{cop.points} XP</Text>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
 
       <View style={styles.profileForm}>
         <View style={styles.inputGroup}>
@@ -597,7 +714,28 @@ export default function BoysDashboard({ navigation }) {
               editable={isEditing}
               onChangeText={(t) => setProfileForm({ ...profileForm, address: t })}
             />
+            {isEditing && (
+              <TouchableOpacity 
+                style={styles.gpsCaptureBtn} 
+                onPress={async () => {
+                  const loc = await Location.getCurrentPositionAsync({});
+                  setProfileForm({ 
+                    ...profileForm, 
+                    latitude: loc.coords.latitude, 
+                    longitude: loc.coords.longitude 
+                  });
+                  Alert.alert("📍 Location Captured", "Your current GPS coordinates are now set as your Home Base.");
+                }}
+              >
+                <LocateFixed size={18} color={theme.primary} />
+              </TouchableOpacity>
+            )}
           </View>
+          {profileForm.latitude && (
+            <Text style={{ fontSize: 10, color: '#10B981', marginTop: 5, fontWeight: 'bold' }}>
+              🎯 GPS Locked: {profileForm.latitude.toFixed(4)}, {profileForm.longitude.toFixed(4)}
+            </Text>
+          )}
         </View>
 
         <View style={[styles.settingsHub, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -1077,18 +1215,21 @@ const styles = StyleSheet.create({
 
   // TAB VIEWS
   tabView: { flex: 1, padding: 25 },
-  radarHeader: { marginBottom: 20 },
+  radarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  refreshBtn: { padding: 8, borderRadius: 10, backgroundColor: 'rgba(59, 130, 246, 0.1)' },
   tabTitle: { fontSize: 24, fontWeight: '900' },
-  tabSub: { color: '#8E8E8E', fontSize: 14, marginBottom: 30 },
+  tabSub: { color: '#8E8E8E', fontSize: 14 },
 
-  radarContainer: { alignItems: 'center', marginTop: 40 },
-  radarCircle: { width: 250, height: 250, borderRadius: 125, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
-  radarCircleInner: { width: 150, height: 150, borderRadius: 75, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
-  radarCenter: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center' },
-  radarStats: { flexDirection: 'row', gap: 30, marginTop: 40 },
-  statBox: { alignItems: 'center' },
-  statNum: { fontSize: 24, fontWeight: '900' },
-  statLabel: { color: '#8E8E8E', fontSize: 11, marginTop: 4 },
+  radarMapContainer: { flex: 1, height: height * 0.5, borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: '#333', backgroundColor: '#000', marginTop: 10 },
+  radarMap: { width: '100%', height: '100%' },
+  radarOverlay: { position: 'absolute', bottom: 15, left: 15, right: 15, backgroundColor: 'rgba(0,0,0,0.85)', borderRadius: 16, padding: 12, borderWidth: 1, borderColor: '#333' },
+  statRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
+  statItem: { alignItems: 'center' },
+  statValue: { fontSize: 18, fontWeight: 'bold' },
+  statLabel: { fontSize: 9, color: '#888', marginTop: 2, textTransform: 'uppercase' },
+  statDivider: { width: 1, height: 25, backgroundColor: '#333' },
+  copMarker: { width: 26, height: 26, borderRadius: 13, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#FFF', elevation: 5 },
+  myMarker: { backgroundColor: '#F59E0B', scaleX: 1.2, scaleY: 1.2, borderWidth: 3 },
 
   reportCard: { borderRadius: 20, overflow: 'hidden', marginBottom: 15 },
   reportGradient: { padding: 20, flexDirection: 'row', alignItems: 'center' },
@@ -1112,8 +1253,9 @@ const styles = StyleSheet.create({
   profileForm: { marginTop: 10, paddingBottom: 100 },
   inputGroup: { marginBottom: 20 },
   inputLabel: { fontSize: 11, fontWeight: '900', color: '#8E8E8E', marginBottom: 8 },
-  inputBox: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, height: 55, borderRadius: 14, borderWidth: 1 },
-  input: { flex: 1, marginLeft: 12, fontSize: 14, fontWeight: '600' },
+  inputBox: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, borderRadius: 12, borderWidth: 1, height: 50 },
+  input: { flex: 1, marginLeft: 10, fontSize: 14, fontWeight: '600' },
+  gpsCaptureBtn: { padding: 8, backgroundColor: 'rgba(59, 130, 246, 0.1)', borderRadius: 8, marginLeft: 5 },
   editBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 55, borderRadius: 14, gap: 10, marginTop: 10 },
   editBtnText: { fontWeight: '900', fontSize: 16 },
   saveBtn: { backgroundColor: '#10B981', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 55, borderRadius: 14, gap: 10, marginTop: 10 },
@@ -1134,11 +1276,25 @@ const styles = StyleSheet.create({
   rankLab: { fontSize: 10, fontWeight: '800', color: '#8E8E8E' },
   rankDivider: { width: 1, height: '100%', backgroundColor: '#8E8E8E33' },
 
-  leaderboardBox: { padding: 20, borderRadius: 20, backgroundColor: '#3B82F610', marginBottom: 25 },
-  leaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  leaderRank: { width: 30, fontSize: 14, fontWeight: '900', color: '#8B5CF6' },
-  leaderName: { flex: 1, fontSize: 14, fontWeight: '700' },
+  leaderboardBox: { padding: 20, borderRadius: 20, backgroundColor: '#3B82F610', marginBottom: 25, borderWidth: 1, borderColor: 'rgba(59, 130, 246, 0.2)' },
+  leaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
+  leaderRank: { width: 35, fontSize: 16, fontWeight: '900' },
+  leaderName: { flex: 1, fontSize: 15, fontWeight: '700' },
+  leaderStats: { alignItems: 'flex-end' },
   leaderLevel: { fontSize: 12, fontWeight: '800', color: '#8E8E8E' },
+  leaderPoints: { fontSize: 10, color: '#3B82F6', fontWeight: 'bold' },
+
+  // FULL LEADERBOARD
+  leaderboardHeader: { alignItems: 'center', marginVertical: 30 },
+  leaderTitle: { fontSize: 24, fontWeight: '900', marginTop: 10 },
+  leaderSub: { color: '#8E8E8E', fontSize: 14 },
+  fullLeaderRow: { flexDirection: 'row', alignItems: 'center', padding: 15, borderRadius: 18, borderWidth: 1, marginBottom: 12 },
+  rankBadge: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  rankText: { fontSize: 18, fontWeight: '900' },
+  fullLeaderName: { fontSize: 16, fontWeight: '800' },
+  fullLeaderLevel: { fontSize: 12, color: '#8E8E8E', marginTop: 2 },
+  pointsBadge: { backgroundColor: 'rgba(59, 130, 246, 0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
+  pointsText: { color: '#3B82F6', fontWeight: '900', fontSize: 12 },
 
   infoBox: { padding: 15, borderRadius: 15, borderWidth: 1, flexDirection: 'row', gap: 10, marginTop: 20 },
   infoText: { flex: 1, fontSize: 12, fontStyle: 'italic' },
