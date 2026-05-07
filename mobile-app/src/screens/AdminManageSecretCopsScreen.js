@@ -22,8 +22,9 @@ import MapView, { Marker, Polyline } from 'react-native-maps';
 import api from '../utils/api';
 
 const AdminManageSecretCopsScreen = ({ navigation }) => {
-  const [activeTab, setActiveTab] = useState('reports'); // 'applicants' or 'reports'
+  const [activeTab, setActiveTab] = useState('reports'); // 'applicants', 'reports', or 'map'
   const [pendingUsers, setPendingUsers] = useState([]);
+  const [verifiedUsers, setVerifiedUsers] = useState([]);
   const [intelRequests, setIntelRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showMapModal, setShowMapModal] = useState(false);
@@ -32,13 +33,17 @@ const AdminManageSecretCopsScreen = ({ navigation }) => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      if (activeTab === 'applicants') {
-        const res = await api.get('/admin/pending-secret-cops');
-        if (res.data.success) setPendingUsers(res.data.users);
-      } else {
-        const res = await api.get('/admin/intel-requests');
-        if (res.data.success) setIntelRequests(res.data.requests);
-      }
+      // 1. Fetch Intel Reports
+      const intelRes = await api.get('/admin/intel-requests');
+      if (intelRes.data.success) setIntelRequests(intelRes.data.requests);
+
+      // 2. Fetch Pending Applicants
+      const pendingRes = await api.get('/admin/pending-secret-cops');
+      if (pendingRes.data.success) setPendingUsers(pendingRes.data.users);
+
+      // 3. Fetch Verified Cops for Map
+      const verifiedRes = await api.get('/admin/verified-secret-cops');
+      if (verifiedRes.data.success) setVerifiedUsers(verifiedRes.data.users);
     } catch (error) {
       console.error('Fetch Error:', error);
     } finally {
@@ -211,18 +216,77 @@ const AdminManageSecretCopsScreen = ({ navigation }) => {
           onPress={() => setActiveTab('reports')}
         >
           <Text style={[styles.tabText, activeTab === 'reports' && styles.activeTabText]}>Intel Reports</Text>
+          {intelRequests.length > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeNumber}>{intelRequests.length}</Text>
+            </View>
+          )}
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tab, activeTab === 'applicants' && styles.activeTab]}
           onPress={() => setActiveTab('applicants')}
         >
           <Text style={[styles.tabText, activeTab === 'applicants' && styles.activeTabText]}>Applicants</Text>
+          {pendingUsers.length > 0 && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeNumber}>{pendingUsers.length}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'map' && styles.activeTab]}
+          onPress={() => setActiveTab('map')}
+        >
+          <Text style={[styles.tabText, activeTab === 'map' && styles.activeTabText]}>Live Map</Text>
         </TouchableOpacity>
       </View>
 
       {loading ? (
         <View style={styles.centered}>
           <ActivityIndicator size="large" color="#FFD700" />
+        </View>
+      ) : activeTab === 'map' ? (
+        <View style={{ flex: 1 }}>
+          <MapView
+            style={{ flex: 1 }}
+            theme="dark"
+            initialRegion={{
+              latitude: 16.0271,
+              longitude: 73.6888,
+              latitudeDelta: 0.5,
+              longitudeDelta: 0.5,
+            }}
+          >
+            {verifiedUsers.filter(u => u.latitude && u.longitude).map(user => (
+              <Marker
+                key={user.id}
+                coordinate={{ 
+                  latitude: parseFloat(user.latitude), 
+                  longitude: parseFloat(user.longitude) 
+                }}
+                title={user.fullName}
+                description={`${user.profession} • ${user.status === 'LIVE' ? '📡 LIVE TRACKING' : '🏠 HOME BASE'}`}
+              >
+                <View style={[
+                  styles.copMarker, 
+                  { backgroundColor: user.status === 'LIVE' ? '#10B981' : '#3B82F6' },
+                  user.status === 'LIVE' && styles.livePulse
+                ]}>
+                  <User size={14} color="#FFF" />
+                </View>
+              </Marker>
+            ))}
+          </MapView>
+          <View style={styles.mapLegend}>
+            <View style={styles.legendRow}>
+              <View style={[styles.legendDot, { backgroundColor: '#10B981' }]} />
+              <Text style={styles.legendText}>Live Tracking ({verifiedUsers.filter(u => u.status === 'LIVE').length})</Text>
+            </View>
+            <View style={[styles.legendRow, { marginTop: 5 }]}>
+              <View style={[styles.legendDot, { backgroundColor: '#3B82F6' }]} />
+              <Text style={styles.legendText}>At Home Base ({verifiedUsers.filter(u => u.status === 'OFFLINE').length})</Text>
+            </View>
+          </View>
         </View>
       ) : (
         <FlatList
@@ -357,7 +421,15 @@ const styles = StyleSheet.create({
   mapInfoCard: { position: 'absolute', bottom: 40, left: 20, right: 20, backgroundColor: 'rgba(21,21,21,0.9)', padding: 20, borderRadius: 20, borderWidth: 1, borderColor: '#333' },
   mapInfoTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
   mapInfoSub: { color: '#888', fontSize: 14, marginTop: 5 },
-  verifyBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 45, borderRadius: 12 }
+  verifyBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 45, borderRadius: 12 },
+  badge: { position: 'absolute', right: 5, top: 5, backgroundColor: '#EF4444', minWidth: 18, height: 18, borderRadius: 9, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4 },
+  badgeNumber: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
+  copMarker: { width: 26, height: 26, borderRadius: 13, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#FFF', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.5, shadowRadius: 2 },
+  livePulse: { borderWidth: 3, borderColor: '#FFF', shadowColor: '#10B981', shadowOpacity: 1, shadowRadius: 10 },
+  mapLegend: { position: 'absolute', top: 20, right: 20, backgroundColor: 'rgba(0,0,0,0.8)', padding: 10, borderRadius: 10, borderWidth: 1, borderColor: '#333' },
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  legendDot: { width: 10, height: 10, borderRadius: 5 },
+  legendText: { color: '#FFF', fontSize: 12, fontWeight: 'bold' }
 });
 
 export default AdminManageSecretCopsScreen;
