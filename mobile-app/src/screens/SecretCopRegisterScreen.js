@@ -22,34 +22,24 @@ const SecretCopRegisterScreen = ({ navigation }) => {
   const [profession, setProfession] = useState('');
   const [workAddress, setWorkAddress] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isLocating, setIsLocating] = useState(false);
+  const [coords, setCoords] = useState({ latitude: null, longitude: null });
 
   const handleLocateMe = async () => {
     setIsLocating(true);
     try {
-      // 1. Check current status
-      const { status: existingStatus } = await Location.getForegroundPermissionsAsync();
-      let finalStatus = existingStatus;
-
-      // 2. If not granted, request it
-      if (existingStatus !== 'granted') {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        finalStatus = status;
-      }
-
-      // 3. If still not granted, tell the user how to fix it
-      if (finalStatus !== 'granted') {
-        Alert.alert(
-          'Location Permission Required',
-          'To auto-fill your workplace, please enable location permissions in your phone settings for Chetna.',
-          [{ text: 'OK' }]
-        );
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Location access is needed to map your duty station.');
         setIsLocating(false);
         return;
       }
 
-      // 4. Get position if granted
       let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setCoords({ 
+        latitude: location.coords.latitude, 
+        longitude: location.coords.longitude 
+      });
+
       let reverse = await Location.reverseGeocodeAsync({
         latitude: location.coords.latitude,
         longitude: location.coords.longitude
@@ -59,13 +49,11 @@ const SecretCopRegisterScreen = ({ navigation }) => {
         const place = reverse[0];
         const street = place.street || place.name || '';
         const city = place.city || place.subregion || '';
-        const region = place.region || '';
-        const formattedAddress = [street, city, region].filter(Boolean).join(', ');
+        const formattedAddress = [street, city].filter(Boolean).join(', ');
         setWorkAddress(formattedAddress);
       }
     } catch (error) {
       console.warn("Location Error:", error);
-      Alert.alert('Location Error', 'Unable to fetch your live location right now. Please check your GPS settings.');
     }
     setIsLocating(false);
   };
@@ -81,28 +69,30 @@ const SecretCopRegisterScreen = ({ navigation }) => {
       const response = await api.post('/auth/apply-secret-cop', {
         profession,
         workAddress,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
         userId: userData.id
       });
 
       if (response.data.success) {
-        // Update local user data to show verified status IMMEDIATELY
         setUserData({ 
           ...userData, 
           isVerified: true, 
           isSecretCopPending: false,
           profession,
-          workAddress 
+          workAddress,
+          latitude: coords.latitude,
+          longitude: coords.longitude
         });
 
         Alert.alert(
           'Verification Successful',
-          'Congratulations! You are now a verified Secret Cop for Sindhudurg. Your dashboard has been upgraded.',
+          'Congratulations! You are now a verified Secret Cop. Your dashboard is ready.',
           [{ text: 'AWESOME!', onPress: () => navigation.goBack() }]
         );
       }
     } catch (error) {
-      console.error('Application Error:', error);
-      const errorMsg = error.response?.data?.message || 'Failed to submit application. Please try again later.';
+      const errorMsg = error.response?.data?.message || 'Failed to submit application.';
       Alert.alert('Error', errorMsg);
     } finally {
       setLoading(false);
