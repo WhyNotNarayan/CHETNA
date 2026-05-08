@@ -1,0 +1,139 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  GIRL
+  BOY
+  SECRET_COP
+  ADMIN
+}
+
+enum AlertStatus {
+  ACTIVE
+  RESOLVED
+}
+
+model User {
+  id            String   @id @default(uuid())
+  phone         String   @unique
+  email         String?  @unique
+  password      String?
+  fullName      String
+  address       String?
+  workAddress   String?  // New: Office location for Secret Cops
+  profession    String?  // New: Job role for Secret Cops
+  gender        String?
+  role          Role     @default(BOY)
+  isVerified    Boolean  @default(false)
+  isSecretCopPending Boolean @default(false) 
+  latitude      Float?   // Permanent Registration Latitude
+  longitude     Float?   // Permanent Registration Longitude
+  points        Int      @default(0)    
+  level         Int      @default(1)    // New: User Rank Level
+  awards        Int      @default(0)    // New: Count of Admin approvals
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  contacts      EmergencyContact[]
+  alerts        Alert[]
+  responses     SafetyResponse[]
+  suggestions   HazardSuggestion[] // New: Danger road reports
+  lastLocation  Location?
+}
+
+model EmergencyContact {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model RedZone {
+  id          String   @id @default(uuid())
+  name        String   // Area Name
+  latitude    Float
+  longitude   Float
+  destLatitude Float?  // For ROAD mode
+  destLongitude Float? // For ROAD mode
+  pathData    String?  // JSON string of coordinates for curves
+  radius      Float    @default(500) // Default radius in meters
+  caseCount   Int      @default(1)   // Number of cases recorded here
+  type        String   @default("CRIME") // CRIME, DARK_AREA, ANIMAL_ZONE, SHARP_TURN
+  crimeType   String?  // theft, assault, etc.
+  incidentDate DateTime? @default(now())
+  startTime   String?  // e.g., "10:00 PM"
+  endTime     String?  // e.g., "04:00 AM"
+  riskLevel   Int      @default(1)   // Calculated on backend
+  description String?
+  isVerified  Boolean  @default(true) // False if suggested by user but not approved by admin
+  createdAt   DateTime @default(now())
+}
+
+model HazardSuggestion {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  name        String
+  latitude    Float
+  longitude   Float
+  destLatitude Float?
+  destLongitude Float?
+  pathData    String?  // Store JSON array of coordinates for curves/paths
+  startTime   String?
+  endTime     String?
+  type        String   // DARK_AREA, ANIMAL_ZONE, SHARP_TURN, SAFE_ZONE, CRIME
+  description String?
+  caseCount     Int?     @default(0)
+  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdAt   DateTime @default(now())
+}
+
+model Alert {
+  id          String      @id @default(uuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id])
+  latitude    Float
+  longitude   Float
+  status      AlertStatus @default(ACTIVE)
+  voiceTrigger Boolean     @default(false)
+  evidenceUrl String?      // Path to uploaded files
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  responses   SafetyResponse[]
+}
+
+model SafetyResponse {
+  id        String   @id @default(uuid())
+  alertId   String
+  alert     Alert    @relation(fields: [alertId], references: [id])
+  helperId  String
+  helper    User     @relation(fields: [helperId], references: [id])
+  status    String   @default("RESPONDING") // RESPONDING, ARRIVED, HELPED
+  createdAt DateTime @default(now())
+}
+
+model Location {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id])
+  latitude  Float
+  longitude Float
+  updatedAt DateTime @updatedAt
+}
+
+model News {
+  id        String   @id @default(uuid())
+  title     String
+  content   String
+  latitude  Float?
+  longitude Float?
+  source    String?
+  type      String   @default("INFO")
+  createdAt DateTime @default(now())
+}
