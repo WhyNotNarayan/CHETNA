@@ -108,6 +108,57 @@ exports.getPendingSecretCops = async (req, res) => {
   }
 };
 
+exports.getVerifiedSecretCops = async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: {
+        role: 'BOY',
+        isVerified: true
+      },
+      select: {
+        id: true,
+        fullName: true,
+        profession: true,
+        phone: true,
+        level: true,
+        latitude: true,      // Registration Lat
+        longitude: true,     // Registration Lng
+        lastLocation: true,  // Live Lat/Lng
+        address: true,
+        suggestions: {       // Check their reports for location clues
+          take: 1,
+          orderBy: { createdAt: 'desc' },
+          select: { latitude: true, longitude: true }
+        }
+      }
+    });
+
+    // 🎯 SMART TRACKER: Decide whether to show Home or Live location
+    const formattedUsers = users.map(u => {
+      const isLive = u.lastLocation && (new Date() - new Date(u.lastLocation.updatedAt) < 600000);
+      
+      // Use EXACT coordinates from database (from the new GPS button)
+      let finalLat = isLive ? u.lastLocation.latitude : (u.latitude || u.lastLocation?.latitude);
+      let finalLng = isLive ? u.lastLocation.longitude : (u.longitude || u.lastLocation?.longitude);
+
+      return {
+        id: u.id,
+        // ANONYMIZE for Privacy: Hide real name on the map
+        fullName: `Secret Cop #${u.id.slice(-4)}`, 
+        latitude: finalLat,
+        longitude: finalLng,
+        status: isLive ? 'LIVE' : 'OFFLINE',
+        profession: u.profession
+      };
+    }).filter(u => u.latitude && u.longitude);
+
+    res.json({ success: true, users: formattedUsers });
+  } catch (error) {
+    console.error('CRITICAL ERROR [getVerifiedSecretCops]:', error);
+    res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+  }
+};
+
 exports.verifySecretCop = async (req, res) => {
   try {
     const { userId, action } = req.body;
@@ -212,5 +263,31 @@ exports.verifyIntel = async (req, res) => {
   } catch (error) {
     console.error('Verify Intel Error:', error);
     res.status(500).json({ success: false, message: 'Failed to process verification' });
+  }
+};
+
+exports.getLeaderboard = async (req, res) => {
+  try {
+    const leaderboard = await prisma.user.findMany({
+      where: {
+        role: 'BOY',
+        isVerified: true
+      },
+      select: {
+        id: true,
+        fullName: true,
+        level: true,
+        points: true
+      },
+      orderBy: [
+        { level: 'desc' },
+        { points: 'desc' }
+      ]
+    });
+
+    res.json({ success: true, leaderboard });
+  } catch (error) {
+    console.error('CRITICAL ERROR [getLeaderboard]:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch leaderboard' });
   }
 };
