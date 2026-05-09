@@ -101,7 +101,8 @@ model Alert {
   latitude    Float
   longitude   Float
   status      AlertStatus @default(ACTIVE)
-  voiceTrigger Boolean     @default(false)
+  triggerType String      @default("TOUCH") // TOUCH, VOICE
+  voiceNote   String?      // Which phrase triggered it
   evidenceUrl String?      // Path to uploaded files
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
@@ -114,7 +115,7 @@ model SafetyResponse {
   alert     Alert    @relation(fields: [alertId], references: [id])
   helperId  String
   helper    User     @relation(fields: [helperId], references: [id])
-  status    String   @default("RESPONDING") // RESPONDING, ARRIVED, HELPED
+  status    String   @default("PENDING") // PENDING, ACCEPTED, REJECTED, COMPLETED
   createdAt DateTime @default(now())
 }
 
