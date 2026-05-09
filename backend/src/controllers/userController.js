@@ -9,7 +9,6 @@ exports.sendOTP = async (req, res) => {
 
 exports.register = async (req, res) => {
   try {
-    console.log('Incoming Registration Request:', req.body);
     const { phone, email, password, fullName, address, gender } = req.body;
     
     // 🔐 HASH THE PASSWORD STRONGLY
@@ -17,10 +16,8 @@ exports.register = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
 
     let user = await prisma.user.findUnique({ where: { phone } });
-    console.log('Existing User Check Result:', user);
     
     if (user) {
-      console.log('User found, updating...');
       user = await prisma.user.update({
         where: { phone },
         data: { 
@@ -33,7 +30,6 @@ exports.register = async (req, res) => {
         }
       });
     } else {
-      console.log('New user, creating...');
       user = await prisma.user.create({
         data: { 
           phone, 
@@ -46,7 +42,6 @@ exports.register = async (req, res) => {
         }
       });
     }
-    console.log('Database Operation Successful:', user.id);
 
     const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET || 'supersecret', {
       expiresIn: '30d'
@@ -65,7 +60,6 @@ exports.register = async (req, res) => {
 exports.adminLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
-    console.log(`🔑 Admin Login Attempt - Email: "${email}", Password: "${password}"`);
 
     // Hardcoded Admin Security (As requested) - Using .trim() to avoid whitespace issues
     if (email?.trim() === 'aaditaygawade@gmail.com' && password === 'adi^%2006') {
@@ -156,5 +150,30 @@ exports.applySecretCop = async (req, res) => {
   } catch (error) {
     console.error('Secret Cop Application Error:', error);
     res.status(500).json({ success: false, message: 'Failed to submit application' });
+  }
+};
+
+exports.getProfile = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id || id === 'undefined') {
+      return res.status(400).json({ success: false, message: 'Invalid User ID provided' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id }
+    });
+
+    if (!user) return res.status(404).json({ success: false, message: 'User not found in database' });
+
+    const { password: _, ...userWithoutPassword } = user;
+    res.json({ success: true, user: userWithoutPassword });
+  } catch (error) {
+    console.error('CRITICAL ERROR [getProfile]:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server Error: Did you run "npx prisma db push"?', 
+      error: error.message 
+    });
   }
 };
