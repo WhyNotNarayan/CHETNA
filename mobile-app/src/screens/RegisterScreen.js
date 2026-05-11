@@ -4,8 +4,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { AuthContext } from '../context/AuthContext';
 import api from '../utils/api';
 import { FirebaseRecaptchaVerifierModal } from 'expo-firebase-recaptcha';
+import { getAuth, RecaptchaVerifier, PhoneAuthProvider, signInWithPhoneNumber, signInWithCredential } from 'firebase/auth';
 import { auth, firebaseConfig } from '../utils/firebase';
-import { PhoneAuthProvider, signInWithCredential } from 'firebase/auth';
 import * as Location from 'expo-location';
 import { MapPin, ArrowRight, ShieldCheck } from 'lucide-react-native';
 
@@ -17,6 +17,7 @@ export default function RegisterScreen({ navigation }) {
   // Step wizard state
   const [step, setStep] = useState(1);
   const [isLocating, setIsLocating] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   // Form states
   const [fullName, setFullName] = useState('');
@@ -100,35 +101,61 @@ export default function RegisterScreen({ navigation }) {
   };
 
   const handleSendOTP = async () => {
-    if (phone.length < 10) {
+    // Sanitize phone: remove any non-numeric characters except +
+    const cleanPhone = phone.replace(/[^\d+]/g, '');
+
+    if (cleanPhone.length < 10) {
       Alert.alert('Error', 'Please enter a valid mobile number');
       return;
     }
 
+    setLoading(true);
     try {
-      const phoneProvider = new PhoneAuthProvider(auth);
-      const formattedPhone = phone.startsWith('+') ? phone : `+91${phone}`;
-      const vId = await phoneProvider.verifyPhoneNumber(formattedPhone, recaptchaVerifier.current);
+      const formattedPhone = cleanPhone.startsWith('+') ? cleanPhone : `+91${cleanPhone}`;
+
+      // Web specific ReCAPTCHA initialization
+      if (Platform.OS === 'web') {
+        const confirmationResult = await signInWithPhoneNumber(auth, formattedPhone, recaptchaVerifier.current);
+        window.confirmationResult = confirmationResult;
+        setVerificationId('WEB_FLOW');
+      } else {
+        const provider = new PhoneAuthProvider(auth);
+        const vid = await provider.verifyPhoneNumber(formattedPhone, recaptchaVerifier.current);
+        setVerificationId(vid);
+      }
       
-      setVerificationId(vId);
+      setStep(2);
       setOtpSent(true);
       setTimer(60);
-      Alert.alert('Success', 'Security OTP Sent to your Phone!');
+      Alert.alert('Success', 'OTP has been sent to your mobile number.');
     } catch (error) {
-      Alert.alert('Error', error.message || 'Failed to send OTP');
+      console.error('Send OTP Error:', error);
+      if (Platform.OS === 'web') recaptchaVerifier.current = null;
+      
+      let errorMsg = 'Failed to send OTP. Please try again.';
+      if (error.code === 'auth/too-many-requests') {
+        errorMsg = 'Too many requests. Please wait 15 minutes or use a test number.';
+      }
+      Alert.alert('Error', errorMsg);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleFinalRegister = async () => {
-    if (!otp) {
-      Alert.alert('Error', 'Please enter the OTP');
+  const handleVerifyOTP = async () => {
+    if (!otp || otp.length !== 6) {
+      Alert.alert('Error', 'Please enter a valid 6-digit OTP');
       return;
     }
 
+    setLoading(true);
     try {
-      // 1. Verify SMS OTP natively using Firebase
-      const credential = PhoneAuthProvider.credential(verificationId, otp);
-      await signInWithCredential(auth, credential);
+      if (Platform.OS === 'web' && window.confirmationResult) {
+        await window.confirmationResult.confirm(otp);
+      } else {
+        const credential = PhoneAuthProvider.credential(verificationId, otp);
+        await signInWithCredential(auth, credential);
+      }
 
       // 2. Alert Node.js Backend to permanently store the Verified User
       const response = await api.post('/auth/register', { 
@@ -154,11 +181,16 @@ export default function RegisterScreen({ navigation }) {
 
   return (
     <LinearGradient colors={['#fff', '#fee0f4', '#fce3eb']} style={styles.container}>
-      {Platform.OS !== 'web' && (
+      {Platform.OS !== 'web' ? (
         <FirebaseRecaptchaVerifierModal
           ref={recaptchaVerifier}
           firebaseConfig={firebaseConfig}
           attemptInvisibleVerification={true}
+        />
+      ) : (
+        <View 
+          nativeID="recaptcha-container" 
+          style={Platform.OS === 'web' ? { height: 100, width: '100%', display: 'none' } : {}} 
         />
       )}
       <SafeAreaView style={{ flex: 1 }}>
@@ -334,7 +366,7 @@ export default function RegisterScreen({ navigation }) {
                         </TouchableOpacity>
                       )}
                     </View>
-                    <TouchableOpacity style={styles.primaryButton} onPress={handleFinalRegister}>
+                    <TouchableOpacity style={styles.primaryButton} onPress={handleVerifyOTP}>
                       <LinearGradient colors={['#2bb24c', '#156b2b']} start={{x: 0, y: 0}} end={{x: 1, y: 0}} style={styles.gradientButton}>
                         <Text style={styles.primaryButtonText}>Verify & Create Account</Text>
                       </LinearGradient>
