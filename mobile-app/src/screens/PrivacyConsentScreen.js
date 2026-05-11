@@ -1,5 +1,5 @@
 import React, { useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, ScrollView, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, ScrollView, StatusBar, Platform } from 'react-native';
 import { ChevronLeft, HelpCircle, Clock } from 'lucide-react-native';
 import { ThemeContext } from '../context/ThemeContext';
 import { LanguageContext } from '../context/LanguageContext';
@@ -21,14 +21,15 @@ const PrivacyConsentScreen = ({ navigation }) => {
     logout(); // Or go back to welcome
   };
 
-  return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <StatusBar barStyle="light-content" />
-      
-      {/* 1. Gradient Header Section */}
+  const Content = (
+    <>
+      {/* 1. Gradient Header Section - FIXED for Web, Flow for Mobile */}
       <LinearGradient 
         colors={['#4B0082', '#d63384']} 
-        style={styles.headerGradient}
+        style={[
+          styles.headerGradient,
+          Platform.OS === 'web' && { position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1 }
+        ]}
       >
         <SafeAreaView>
           <View style={styles.topNav}>
@@ -49,12 +50,13 @@ const PrivacyConsentScreen = ({ navigation }) => {
         </SafeAreaView>
       </LinearGradient>
 
-      {/* 2. Main Content Card */}
-      <View style={[styles.card, { backgroundColor: theme.card }]}>
-        <ScrollView 
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
+      {/* 2. Main Content Card - High Z-Index to cover header */}
+      <View style={[
+        styles.card, 
+        { backgroundColor: theme.card },
+        Platform.OS === 'web' && { marginTop: 220, zIndex: 2, position: 'relative' }
+      ]}>
+        <View style={styles.scrollContent}>
           <Text style={[styles.title, { color: theme.text }]}>Terms & Conditions</Text>
           
           <View style={styles.metaRow}>
@@ -96,38 +98,75 @@ const PrivacyConsentScreen = ({ navigation }) => {
             </Text>
           </View>
 
-          <View style={{ height: 100 }} />
-        </ScrollView>
+          <View style={{ height: 20 }} />
 
-        {/* 3. Fixed Bottom Buttons */}
-        <View style={[styles.footer, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
-          <TouchableOpacity 
-            style={[styles.declineBtn, { backgroundColor: themeMode === 'dark' ? '#222' : '#F0F0F0' }]} 
-            onPress={handleDecline}
-          >
-            <Text style={[styles.declineText, { color: theme.subtext }]}>Decline</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.acceptBtnWrapper} onPress={handleAccept}>
-            <LinearGradient
-              colors={['#f92b7c', '#791880']}
-              start={{x: 0, y: 0}} end={{x: 1, y: 0}}
-              style={styles.acceptBtn}
-            >
-              <Text style={styles.acceptText}>Accept</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+          {/* Buttons for Web (Inside Flow) */}
+          {Platform.OS === 'web' && (
+            <View style={[styles.footer, { position: 'relative', marginTop: 20, paddingBottom: 20 }]}>
+              <TouchableOpacity 
+                style={[styles.declineBtn, { backgroundColor: themeMode === 'dark' ? '#222' : '#F0F0F0' }]} 
+                onPress={handleDecline}
+              >
+                <Text style={[styles.declineText, { color: theme.subtext }]}>Decline</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.acceptBtnWrapper} onPress={handleAccept}>
+                <LinearGradient
+                  colors={['#f92b7c', '#791880']}
+                  start={{x: 0, y: 0}} end={{x: 1, y: 0}}
+                  style={styles.acceptBtn}
+                >
+                  <Text style={styles.acceptText}>Accept</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
+
+        {/* Fixed Buttons for Mobile Only */}
+        {Platform.OS !== 'web' && (
+          <View style={[styles.footer, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
+            <TouchableOpacity 
+              style={[styles.declineBtn, { backgroundColor: themeMode === 'dark' ? '#222' : '#F0F0F0' }]} 
+              onPress={handleDecline}
+            >
+              <Text style={[styles.declineText, { color: theme.subtext }]}>Decline</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.acceptBtnWrapper} onPress={handleAccept}>
+              <LinearGradient
+                colors={['#f92b7c', '#791880']}
+                start={{x: 0, y: 0}} end={{x: 1, y: 0}}
+                style={styles.acceptBtn}
+              >
+                <Text style={styles.acceptText}>Accept</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
+    </>
+  );
+
+  return (
+    <View style={[
+      styles.container, 
+      { backgroundColor: theme.background },
+      Platform.OS === 'web' && { height: '100vh', overflowY: 'auto', display: 'block' }
+    ]}>
+      <StatusBar barStyle="light-content" />
+      {Content}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { 
+    flex: 1,
+  },
   headerGradient: {
-    height: height * 0.35,
-    paddingTop: 10,
+    height: Platform.OS === 'web' ? 220 : height * 0.35,
+    paddingTop: Platform.OS === 'web' ? 20 : 10,
   },
   topNav: {
     flexDirection: 'row',
@@ -144,9 +183,9 @@ const styles = StyleSheet.create({
   },
   helloText: {
     color: '#FFF',
-    fontSize: 28,
+    fontSize: Platform.OS === 'web' ? 32 : 28,
     fontWeight: 'bold',
-    marginBottom: 10,
+    marginBottom: Platform.OS === 'web' ? 10 : 10,
   },
   headerDesc: {
     color: 'rgba(255, 255, 255, 0.8)',
@@ -155,11 +194,13 @@ const styles = StyleSheet.create({
     maxWidth: '85%',
   },
   card: {
-    flex: 1,
-    marginTop: -40,
-    borderTopLeftRadius: 40,
-    borderTopRightRadius: 40,
-    overflow: 'hidden',
+    flex: Platform.OS === 'web' ? 0 : 1,
+    marginTop: Platform.OS === 'web' ? 0 : -40,
+    borderTopLeftRadius: Platform.OS === 'web' ? 50 : 40,
+    borderTopRightRadius: Platform.OS === 'web' ? 50 : 40,
+    overflow: 'visible',
+    minHeight: Platform.OS === 'web' ? '100%' : 'none',
+    boxShadow: Platform.OS === 'web' ? '0 -20px 40px rgba(0,0,0,0.5)' : 'none',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -10 },
     shadowOpacity: 0.1,
@@ -168,6 +209,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 30,
+    paddingTop: Platform.OS === 'web' ? 50 : 30,
   },
   title: {
     fontSize: 32,
@@ -204,15 +246,16 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   footer: {
-    position: 'absolute',
+    position: Platform.OS === 'web' ? 'relative' : 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
     flexDirection: 'row',
     padding: 25,
-    paddingBottom: 40,
+    paddingBottom: Platform.OS === 'web' ? 25 : 40,
     gap: 15,
     borderTopWidth: 1,
+    marginTop: Platform.OS === 'web' ? 20 : 0,
   },
   declineBtn: {
     flex: 1,
