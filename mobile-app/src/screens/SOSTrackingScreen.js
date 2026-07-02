@@ -7,7 +7,6 @@ import { AuthContext } from '../context/AuthContext';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { Audio } from 'expo-av';
 import * as Location from 'expo-location';
-import * as FileSystem from 'expo-file-system/legacy';
 import { queueLocation, queueMedia, attemptSync } from '../utils/offlineSync';
 
 const { width } = Dimensions.get('window');
@@ -99,25 +98,12 @@ export default function SOSTrackingScreen({ route, navigation }) {
   };
 
   // Ensure file is fully written before uploading
-  const waitForFileReady = async (uri, maxAttempts = 10) => {
-    for (let i = 0; i < maxAttempts; i++) {
-      try {
-        const info = await FileSystem.getInfoAsync(uri);
-        if (info.exists && info.size > 0) {
-          // Double-check size is stable (not still growing)
-          await new Promise(r => setTimeout(r, 500));
-          const info2 = await FileSystem.getInfoAsync(uri);
-          if (info2.size === info.size) {
-            console.log('[SOS] File ready, size:', info.size);
-            return;
-          }
-        }
-      } catch (e) {
-        // File not ready yet
-      }
-      await new Promise(r => setTimeout(r, 500));
-    }
-    console.warn('[SOS] File readiness timeout, proceeding anyway');
+  const waitForFileReady = async (uri) => {
+    // Simple delay — expo-camera recordAsync promise resolves when recording stops,
+    // but the OS may still be flushing the file. 3 seconds is safe for 28s clips.
+    console.log('[SOS] Waiting for file to flush to disk...');
+    await new Promise(r => setTimeout(r, 3000));
+    console.log('[SOS] File should be ready:', uri);
   };
 
   // Continuous Audio Recording Loop

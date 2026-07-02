@@ -48,62 +48,42 @@ const readFileAsBase64 = async (fileUri) => {
 // Upload a single media file immediately via binary stream
 const uploadMediaFile = async (alertId, fileUri, fileType) => {
   const userToken = await AsyncStorage.getItem('userToken');
-  // Build full URL — baseURL already includes /api
   const uploadUrl = `${api.defaults.baseURL}/alerts/${alertId}/upload-evidence-binary`;
 
-  console.log(`[OfflineSync] Uploading ${fileType} directly to: ${uploadUrl}`);
-  console.log(`[OfflineSync] File URI: ${fileUri}`);
+  console.log(`[OfflineSync] Uploading ${fileType} to: ${uploadUrl}`);
 
-  // Verify the file exists before uploading
-  const fileInfo = await FileSystem.getInfoAsync(fileUri);
-  if (!fileInfo.exists) {
-    console.error('[OfflineSync] File does not exist at URI:', fileUri);
-    return false;
-  }
-  console.log(`[OfflineSync] File size: ${fileInfo.size} bytes`);
+  try {
+    const result = await FileSystem.uploadAsync(uploadUrl, fileUri, {
+      httpMethod: 'POST',
+      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+      headers: {
+        'Authorization': `Bearer ${userToken}`,
+        'X-File-Type': fileType,
+        'Content-Type': fileType === 'VIDEO' ? 'video/mp4' : 'audio/m4a',
+      },
+    });
 
-  // For video files, verify it's a valid MP4 by checking file signature
-  if (fileType === 'VIDEO') {
-    try {
-      const header = await FileSystem.readAsStringAsync(fileUri, {
-        encoding: FileSystem.EncodingType.Base64,
-        length: 32,
-        position: 0,
-      });
-      // MP4 files should have 'ftyp' at offset 4
-      const base64Header = header.substring(0, 16);
-      console.log('[OfflineSync] Video file header (base64):', base64Header);
-    } catch (e) {
-      console.warn('[OfflineSync] Could not read video header:', e.message);
-    }
-  }
+    console.log(`[OfflineSync] Upload status: ${result.status}`);
 
-  const result = await FileSystem.uploadAsync(uploadUrl, fileUri, {
-    httpMethod: 'POST',
-    uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-headers: {
-      'Authorization': `Bearer ${userToken}`,
-      'X-File-Type': fileType,
-      'Content-Type': fileType === 'VIDEO' ? 'video/mp4' : 'audio/m4a',
-    },
-  });
-
-  console.log(`[OfflineSync] Upload result status: ${result.status}`);
-  console.log(`[OfflineSync] Upload response body: ${result.body}`);
-
-  if (result.status === 200 || result.status === 201) {
-    try {
-      const response = JSON.parse(result.body);
-      if (response.success) {
-        console.log('[OfflineSync] Upload confirmed by server:', response.evidence?.id);
+    if (result.status === 200 || result.status === 201) {
+      try {
+        const response = JSON.parse(result.body);
+        if (response.success) {
+          console.log('[OfflineSync] Upload confirmed:', response.evidence?.id);
+          return true;
+        }
+      } catch (e) {
+        console.log('[OfflineSync] Upload completed, response:', result.body);
         return true;
       }
-    } catch (e) {
-      console.warn('[OfflineSync] Could not parse server response:', e.message);
     }
-  }
 
-  return false;
+    console.warn('[OfflineSync] Upload failed with status:', result.status);
+    return false;
+  } catch (err) {
+    console.error('[OfflineSync] Upload error:', err.message);
+    return false;
+  }
 };
 
 // Queue a local audio/video file URI for upload (tries immediate upload first)
