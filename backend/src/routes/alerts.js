@@ -12,6 +12,7 @@ router.get('/nearby', alertController.getNearbyAlerts);
 router.post('/:id/track', alertController.trackSOS);
 router.post('/:id/upload-evidence', alertController.uploadEvidence);
 router.post('/:id/upload-evidence-binary', alertController.uploadEvidenceBinary);
+router.get('/:id/verify-evidence', alertController.verifyEvidenceFile);
 router.post('/:id/upload-evidence-file', alertController.uploadEvidenceFile);
 router.get('/parent-notifications', protect, alertController.getParentNotifications);
 router.get('/my-evidence', protect, alertController.getMyAlertsWithEvidence);

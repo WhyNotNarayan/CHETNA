@@ -278,7 +278,7 @@ exports.trackSOS = async (req, res) => {
 // Upload media evidence (Binary stream for large files)
 exports.uploadEvidenceBinary = async (req, res) => {
   try {
-    const { id } = req.params;
+    const alertId = req.params.id;
     const fileType = req.headers['x-file-type']; // "AUDIO" or "VIDEO"
 
     if (!fileType) {
@@ -294,39 +294,112 @@ exports.uploadEvidenceBinary = async (req, res) => {
     }
 
     const ext = fileType === 'VIDEO' ? 'mp4' : 'm4a';
-    const fileName = `evidence_${id}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+    const fileName = `evidence_${alertId}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
     const filePath = path.join(uploadDir, fileName);
 
     const writeStream = fs.createWriteStream(filePath);
 
-    // Log upload start
-    console.log(`[EvidenceUpload] Receiving ${fileType} for alert ${id}...`);
+    console.log(`[EvidenceUpload] Receiving ${fileType} for alert ${alertId}...`);
 
     req.pipe(writeStream);
 
     writeStream.on('finish', async () => {
-      const stats = fs.statSync(filePath);
-      console.log(`[EvidenceUpload] Saved ${fileType}. Size: ${stats.size} bytes`);
+      try {
+        const stats = fs.statSync(filePath);
+        console.log(`[EvidenceUpload] Saved ${fileType}. Size: ${stats.size} bytes`);
 
-      const fileUrl = `/uploads/${fileName}`;
-      const evidenceFile = await prisma.evidenceFile.create({
-        data: {
-          alertId: id,
-          fileUrl,
-          fileType
+        if (stats.size === 0) {
+          console.error('[EvidenceUpload] File is empty, deleting...');
+          fs.unlinkSync(filePath);
+          return res.status(400).json({ success: false, error: 'Empty file received' });
         }
-      });
-      res.status(201).json({ success: true, evidence: evidenceFile });
+
+        const fileUrl = `/uploads/${fileName}`;
+        const evidenceFile = await prisma.evidenceFile.create({
+          data: {
+            alertId,
+            fileUrl,
+            fileType
+          }
+        });
+        res.status(201).json({ success: true, evidence: evidenceFile });
+      } catch (dbError) {
+        console.error('[EvidenceUpload] DB Error:', dbError);
+        res.status(500).json({ success: false, error: 'Failed to save evidence record' });
+      }
     });
 
     writeStream.on('error', (err) => {
-      console.error('File Write Error:', err);
+      console.error('[EvidenceUpload] File Write Error:', err);
       res.status(500).json({ success: false, error: 'File save failed' });
     });
 
+    req.on('error', (err) => {
+      console.error('[EvidenceUpload] Request Stream Error:', err);
+      res.status(500).json({ success: false, error: 'Upload stream error' });
+    });
+
   } catch (error) {
-    console.error('Binary Upload Error:', error);
+    console.error('[EvidenceUpload] Binary Upload Error:', error);
     res.status(500).json({ success: false, error: 'Failed to process binary upload' });
+  }
+};
+
+// Verify uploaded evidence file integrity
+exports.verifyEvidenceFile = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const evidence = await prisma.evidenceFile.findMany({
+      where: { alertId: id },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (!evidence.length) {
+      return res.status(404).json({ success: false, message: 'No evidence files found' });
+    }
+
+    const fs = require('fs');
+    const path = require('path');
+
+    const results = [];
+    for (const file of evidence) {
+      const filePath = path.join(__dirname, '../../uploads', path.basename(file.fileUrl));
+      const exists = fs.existsSync(filePath);
+      let size = 0;
+      let valid = false;
+      let header = null;
+
+      if (exists) {
+        const stats = fs.statSync(filePath);
+        size = stats.size;
+        
+        // Read first 16 bytes to check MP4 signature
+        const fd = fs.openSync(filePath, 'r');
+        const buffer = Buffer.alloc(16);
+        fs.readSync(fd, buffer, 0, 16, 0);
+        fs.closeSync(fd);
+        
+        header = buffer.toString('hex');
+        // MP4 files have 'ftyp' at offset 4 (bytes 4-7)
+        valid = size > 0 && buffer.toString('ascii', 4, 8) === 'ftyp';
+      }
+
+      results.push({
+        id: file.id,
+        fileType: file.fileType,
+        fileUrl: file.fileUrl,
+        exists,
+        size,
+        validMp4: valid,
+        header,
+        createdAt: file.createdAt
+      });
+    }
+
+    res.json({ success: true, files: results });
+  } catch (error) {
+    console.error('Verify Evidence Error:', error);
+    res.status(500).json({ success: false, error: 'Verification failed' });
   }
 };
 
