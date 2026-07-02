@@ -277,72 +277,86 @@ exports.trackSOS = async (req, res) => {
 
 // Upload media evidence (Binary stream for large files)
 exports.uploadEvidenceBinary = async (req, res) => {
-  try {
-    const alertId = req.params.id;
-    const fileType = req.headers['x-file-type']; // "AUDIO" or "VIDEO"
+  const alertId = req.params.id;
+  const fileType = req.headers['x-file-type']; // "AUDIO" or "VIDEO"
 
-    if (!fileType) {
-      return res.status(400).json({ success: false, message: 'X-File-Type header is required' });
+  if (!fileType) {
+    return res.status(400).json({ success: false, message: 'X-File-Type header is required' });
+  }
+
+  const fs = require('fs');
+  const path = require('path');
+
+  const uploadDir = path.join(__dirname, '../../uploads');
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+
+  const ext = fileType === 'VIDEO' ? 'mp4' : 'm4a';
+  const fileName = `evidence_${alertId}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+  const filePath = path.join(uploadDir, fileName);
+
+  const writeStream = fs.createWriteStream(filePath);
+  let responded = false;
+
+  console.log(`[EvidenceUpload] Receiving ${fileType} for alert ${alertId}...`);
+
+  req.pipe(writeStream);
+
+  req.on('error', (err) => {
+    console.error('[EvidenceUpload] Request stream error:', err.message);
+    if (!responded) {
+      responded = true;
+      try { fs.unlinkSync(filePath); } catch (e) {}
+      res.status(500).json({ success: false, error: 'Upload stream error' });
     }
+  });
 
-    const fs = require('fs');
-    const path = require('path');
-
-    const uploadDir = path.join(__dirname, '../../uploads');
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
+  writeStream.on('error', (err) => {
+    console.error('[EvidenceUpload] Write stream error:', err.message);
+    if (!responded) {
+      responded = true;
+      try { fs.unlinkSync(filePath); } catch (e) {}
+      res.status(500).json({ success: false, error: 'File write failed' });
     }
+  });
 
-    const ext = fileType === 'VIDEO' ? 'mp4' : 'm4a';
-    const fileName = `evidence_${alertId}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
-    const filePath = path.join(uploadDir, fileName);
+  writeStream.on('finish', async () => {
+    try {
+      const stats = fs.statSync(filePath);
+      console.log(`[EvidenceUpload] Saved ${fileType}. Size: ${stats.size} bytes, File: ${fileName}`);
 
-    const writeStream = fs.createWriteStream(filePath);
-
-    console.log(`[EvidenceUpload] Receiving ${fileType} for alert ${alertId}...`);
-
-    req.pipe(writeStream);
-
-    writeStream.on('finish', async () => {
-      try {
-        const stats = fs.statSync(filePath);
-        console.log(`[EvidenceUpload] Saved ${fileType}. Size: ${stats.size} bytes`);
-
-        if (stats.size === 0) {
-          console.error('[EvidenceUpload] File is empty, deleting...');
-          fs.unlinkSync(filePath);
+      if (stats.size === 0) {
+        console.error('[EvidenceUpload] File is empty, deleting...');
+        fs.unlinkSync(filePath);
+        if (!responded) {
+          responded = true;
           return res.status(400).json({ success: false, error: 'Empty file received' });
         }
+        return;
+      }
 
-        const fileUrl = `/uploads/${fileName}`;
-        const evidenceFile = await prisma.evidenceFile.create({
-          data: {
-            alertId,
-            fileUrl,
-            fileType
-          }
-        });
+      const fileUrl = `/uploads/${fileName}`;
+      const evidenceFile = await prisma.evidenceFile.create({
+        data: {
+          alertId,
+          fileUrl,
+          fileType
+        }
+      });
+      console.log(`[EvidenceUpload] DB record created: ${evidenceFile.id} (${fileType})`);
+      if (!responded) {
+        responded = true;
         res.status(201).json({ success: true, evidence: evidenceFile });
-      } catch (dbError) {
-        console.error('[EvidenceUpload] DB Error:', dbError);
+      }
+    } catch (dbError) {
+      console.error('[EvidenceUpload] DB Error:', dbError.message);
+      if (!responded) {
+        responded = true;
         res.status(500).json({ success: false, error: 'Failed to save evidence record' });
       }
-    });
-
-    writeStream.on('error', (err) => {
-      console.error('[EvidenceUpload] File Write Error:', err);
-      res.status(500).json({ success: false, error: 'File save failed' });
-    });
-
-    req.on('error', (err) => {
-      console.error('[EvidenceUpload] Request Stream Error:', err);
-      res.status(500).json({ success: false, error: 'Upload stream error' });
-    });
-
-  } catch (error) {
-    console.error('[EvidenceUpload] Binary Upload Error:', error);
-    res.status(500).json({ success: false, error: 'Failed to process binary upload' });
-  }
+    }
+  });
 };
 
 // Verify uploaded evidence file integrity
