@@ -60,6 +60,8 @@ import MapView, { Marker, Polyline } from '../components/MapWrapper';
 import * as Location from 'expo-location';
 import { Camera as ExpoCamera } from 'expo-camera';
 import { Audio } from 'expo-av';
+import * as MediaLibrary from 'expo-media-library';
+import * as FileSystem from 'expo-file-system/legacy';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AuthContext } from '../context/AuthContext';
 import api from '../utils/api';
@@ -124,6 +126,79 @@ export default function BoysDashboard({ navigation }) {
       Alert.alert('Error', 'Password verification failed.');
     } finally {
       setVerifyingEvidencePassword(false);
+    }
+  };
+
+  // Gallery save state
+  const [galleryPermission, setGalleryPermission] = useState(null);
+  const [savingToGallery, setSavingToGallery] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const { status } = await MediaLibrary.getPermissionsAsync();
+      setGalleryPermission(status === 'granted');
+    })();
+  }, []);
+
+  const requestGalleryPermission = async () => {
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    setGalleryPermission(status === 'granted');
+    if (status !== 'granted') {
+      Alert.alert(
+        'Gallery Permission Required',
+        'Please grant gallery permission in Settings to save evidence recordings.',
+        [{ text: 'OK' }]
+      );
+    }
+    return status === 'granted';
+  };
+
+  const saveToGallery = async (fileUrl, fileType) => {
+    try {
+      let hasPermission = galleryPermission;
+      if (!hasPermission) {
+        hasPermission = await requestGalleryPermission();
+        if (!hasPermission) return;
+      }
+
+      setSavingToGallery(true);
+
+      const baseUrl = api.defaults.baseURL?.replace('/api', '') || '';
+      const fullUrl = fileUrl.startsWith('http') ? fileUrl : `${baseUrl}${fileUrl}`;
+
+      const ext = fileType === 'VIDEO' ? 'mp4' : 'm4a';
+      const fileName = `Chetna_${fileType}_${Date.now()}.${ext}`;
+      const localUri = FileSystem.cacheDirectory + fileName;
+
+      const downloadRes = await FileSystem.downloadAsync(fullUrl, localUri);
+      if (!downloadRes.uri) {
+        Alert.alert('Error', 'Failed to download file');
+        setSavingToGallery(false);
+        return;
+      }
+
+      const asset = await MediaLibrary.createAssetAsync(downloadRes.uri);
+
+      try {
+        const albums = await MediaLibrary.getAlbumsAsync();
+        const chetnaAlbum = albums.find(a => a.title === 'Chetna Evidence');
+        if (chetnaAlbum) {
+          await MediaLibrary.addAssetsToAlbumAsync([asset], chetnaAlbum, false);
+        } else {
+          await MediaLibrary.createAlbumAsync('Chetna Evidence', asset, false);
+        }
+      } catch (albumErr) {
+        console.warn('[BoysDashboard] Album error:', albumErr.message);
+      }
+
+      try { await FileSystem.deleteAsync(localUri, { idempotent: true }); } catch (e) {}
+
+      Alert.alert('Saved!', `${fileType} evidence saved to your gallery under "Chetna Evidence" album.`);
+    } catch (err) {
+      console.error('[BoysDashboard] Save to gallery failed:', err);
+      Alert.alert('Error', 'Failed to save to gallery.');
+    } finally {
+      setSavingToGallery(false);
     }
   };
 
@@ -621,18 +696,28 @@ export default function BoysDashboard({ navigation }) {
                     <View style={styles.mediaEvidenceSection}>
                       <Text style={[styles.evidenceSectionTitle, { color: theme.text }]}>Private Media Evidence ({alert.evidence.length})</Text>
                       {alert.evidence.map((file, fIdx) => (
-                        <TouchableOpacity
-                          key={fIdx}
-                          style={styles.evidenceFileItem}
-                          onPress={() => {
-                            const baseUrl = api.defaults.baseURL.replace('/api', '');
-                            const fullUrl = `${baseUrl}${file.fileUrl}`;
-                            Linking.openURL(fullUrl);
-                          }}
-                        >
-                          <Play color="#6200ee" size={14} fill="#6200ee" />
-                          <Text style={styles.evidenceFileText}>Play {file.fileType} recording</Text>
-                        </TouchableOpacity>
+                        <View key={fIdx} style={styles.evidenceFileItem}>
+                          <TouchableOpacity
+                            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                            onPress={() => {
+                              const baseUrl = api.defaults.baseURL.replace('/api', '');
+                              const fullUrl = `${baseUrl}${file.fileUrl}`;
+                              Linking.openURL(fullUrl);
+                            }}
+                          >
+                            <Play color="#6200ee" size={14} fill="#6200ee" />
+                            <Text style={styles.evidenceFileText}>Play {file.fileType} recording</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.saveToGalleryBtn, savingToGallery && { backgroundColor: '#999' }]}
+                            onPress={() => saveToGallery(file.fileUrl, file.fileType)}
+                            disabled={savingToGallery}
+                          >
+                            <Text style={styles.saveToGalleryText}>
+                              {savingToGallery ? '...' : '⬇ Save'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
                       ))}
                     </View>
                   )}
@@ -1755,5 +1840,7 @@ const styles = StyleSheet.create({
   evidenceSectionTitle: { fontSize: 13, fontWeight: 'bold', marginBottom: 10 },
   evidenceFileItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 },
   evidenceFileText: { fontSize: 12, color: '#6200ee', fontWeight: 'bold' },
+  saveToGalleryBtn: { backgroundColor: '#4CAF50', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  saveToGalleryText: { color: '#FFF', fontSize: 11, fontWeight: 'bold' },
   noDaughterAlertsText: { fontSize: 12, color: '#888', textAlign: 'center', marginVertical: 10 }
 });
