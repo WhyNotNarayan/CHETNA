@@ -7,6 +7,7 @@ import { AuthContext } from '../context/AuthContext';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { Audio } from 'expo-av';
 import * as Location from 'expo-location';
+import * as FileSystem from 'expo-file-system/legacy';
 import { queueLocation, queueMedia, attemptSync } from '../utils/offlineSync';
 
 const { width } = Dimensions.get('window');
@@ -67,12 +68,16 @@ export default function SOSTrackingScreen({ route, navigation }) {
         const video = await cameraRef.current.recordAsync({
           maxDuration: 28, // Use slightly less than 30 to be safe
           videoQuality: '480p',
+          // Note: expo-camera recordAsync doesn't expose muxer options directly
+          // The output is typically fragmented MP4 which needs remuxing for browser playback
         });
 
         console.log('[SOS] Video clip finished:', video.uri);
         setIsRecording(false);
 
         if (video && video.uri) {
+          // CRITICAL: Wait for file to be fully written to disk
+          await waitForFileReady(video.uri);
           await queueMedia(alertId, video.uri, 'VIDEO');
         }
 
@@ -91,6 +96,28 @@ export default function SOSTrackingScreen({ route, navigation }) {
       console.log('[SOS] Camera or Mic permission not granted, or ref missing');
       setTimeout(startContinuousVideo, 2000);
     }
+  };
+
+  // Ensure file is fully written before uploading
+  const waitForFileReady = async (uri, maxAttempts = 10) => {
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const info = await FileSystem.getInfoAsync(uri);
+        if (info.exists && info.size > 0) {
+          // Double-check size is stable (not still growing)
+          await new Promise(r => setTimeout(r, 500));
+          const info2 = await FileSystem.getInfoAsync(uri);
+          if (info2.size === info.size) {
+            console.log('[SOS] File ready, size:', info.size);
+            return;
+          }
+        }
+      } catch (e) {
+        // File not ready yet
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
+    console.warn('[SOS] File readiness timeout, proceeding anyway');
   };
 
   // Continuous Audio Recording Loop

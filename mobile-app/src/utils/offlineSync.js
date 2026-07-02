@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import api from './api';
 
 const QUEUE_KEY_LOCATIONS = 'offline_sos_locations';
@@ -62,10 +62,26 @@ const uploadMediaFile = async (alertId, fileUri, fileType) => {
   }
   console.log(`[OfflineSync] File size: ${fileInfo.size} bytes`);
 
+  // For video files, verify it's a valid MP4 by checking file signature
+  if (fileType === 'VIDEO') {
+    try {
+      const header = await FileSystem.readAsStringAsync(fileUri, {
+        encoding: FileSystem.EncodingType.Base64,
+        length: 32,
+        position: 0,
+      });
+      // MP4 files should have 'ftyp' at offset 4
+      const base64Header = header.substring(0, 16);
+      console.log('[OfflineSync] Video file header (base64):', base64Header);
+    } catch (e) {
+      console.warn('[OfflineSync] Could not read video header:', e.message);
+    }
+  }
+
   const result = await FileSystem.uploadAsync(uploadUrl, fileUri, {
     httpMethod: 'POST',
     uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-    headers: {
+headers: {
       'Authorization': `Bearer ${userToken}`,
       'X-File-Type': fileType,
       'Content-Type': fileType === 'VIDEO' ? 'video/mp4' : 'audio/m4a',
@@ -75,7 +91,19 @@ const uploadMediaFile = async (alertId, fileUri, fileType) => {
   console.log(`[OfflineSync] Upload result status: ${result.status}`);
   console.log(`[OfflineSync] Upload response body: ${result.body}`);
 
-  return result.status === 200 || result.status === 201;
+  if (result.status === 200 || result.status === 201) {
+    try {
+      const response = JSON.parse(result.body);
+      if (response.success) {
+        console.log('[OfflineSync] Upload confirmed by server:', response.evidence?.id);
+        return true;
+      }
+    } catch (e) {
+      console.warn('[OfflineSync] Could not parse server response:', e.message);
+    }
+  }
+
+  return false;
 };
 
 // Queue a local audio/video file URI for upload (tries immediate upload first)

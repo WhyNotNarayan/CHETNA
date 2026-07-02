@@ -4,6 +4,8 @@ import { Shield, Navigation, Newspaper, Mic, Camera, LogOut, Volume2, AlertTrian
 import * as Location from 'expo-location';
 import { Camera as ExpoCamera } from 'expo-camera';
 import { Audio, Video, ResizeMode } from 'expo-av';
+import * as MediaLibrary from 'expo-media-library';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useSafetyMonitor } from '../hooks/useSafetyMonitor';
 import { useVolumeSOS } from '../hooks/useVolumeSOS';
 import { AuthContext } from '../context/AuthContext';
@@ -54,6 +56,86 @@ export default function GirlsDashboard({ navigation }) {
   const [mediaPlayerUrl, setMediaPlayerUrl] = useState(null);
   const [mediaPlayerType, setMediaPlayerType] = useState(null); // 'VIDEO' or 'AUDIO'
   const [showMediaPlayer, setShowMediaPlayer] = useState(false);
+
+  // Gallery save state
+  const [galleryPermission, setGalleryPermission] = useState(null);
+  const [savingToGallery, setSavingToGallery] = useState(false);
+
+  // Check gallery permission on mount
+  useEffect(() => {
+    (async () => {
+      const { status } = await MediaLibrary.getPermissionsAsync();
+      setGalleryPermission(status === 'granted');
+    })();
+  }, []);
+
+  const requestGalleryPermission = async () => {
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    setGalleryPermission(status === 'granted');
+    if (status !== 'granted') {
+      Alert.alert(
+        'Gallery Permission Required',
+        'Please grant gallery permission in Settings to save evidence recordings to your device.',
+        [{ text: 'OK' }]
+      );
+    }
+    return status === 'granted';
+  };
+
+  const saveToGallery = async (fileUrl, fileType) => {
+    try {
+      // Request permission if not granted
+      let hasPermission = galleryPermission;
+      if (!hasPermission) {
+        hasPermission = await requestGalleryPermission();
+        if (!hasPermission) return;
+      }
+
+      setSavingToGallery(true);
+
+      const baseUrl = api.defaults.baseURL?.replace('/api', '') || '';
+      const fullUrl = fileUrl.startsWith('http') ? fileUrl : `${baseUrl}${fileUrl}`;
+
+      const ext = fileType === 'VIDEO' ? 'mp4' : 'm4a';
+      const fileName = `Chetna_${fileType}_${Date.now()}.${ext}`;
+      const localUri = FileSystem.cacheDirectory + fileName;
+
+      console.log('[GirlsDashboard] Downloading file:', fullUrl);
+      const downloadRes = await FileSystem.downloadAsync(fullUrl, localUri);
+
+      if (!downloadRes.uri) {
+        Alert.alert('Error', 'Failed to download file');
+        setSavingToGallery(false);
+        return;
+      }
+
+      console.log('[GirlsDashboard] Saving to gallery:', downloadRes.uri);
+      const asset = await MediaLibrary.createAssetAsync(downloadRes.uri);
+
+      // Try to add to Chetna Evidence album
+      try {
+        const albums = await MediaLibrary.getAlbumsAsync();
+        const chetnaAlbum = albums.find(a => a.title === 'Chetna Evidence');
+        if (chetnaAlbum) {
+          await MediaLibrary.addAssetsToAlbumAsync([asset], chetnaAlbum, false);
+        } else {
+          await MediaLibrary.createAlbumAsync('Chetna Evidence', asset, false);
+        }
+      } catch (albumErr) {
+        console.warn('[GirlsDashboard] Album error (asset still saved):', albumErr.message);
+      }
+
+      // Cleanup cache
+      try { await FileSystem.deleteAsync(localUri, { idempotent: true }); } catch (e) {}
+
+      Alert.alert('Saved!', `${fileType} evidence saved to your gallery under "Chetna Evidence" album.`);
+    } catch (err) {
+      console.error('[GirlsDashboard] Save to gallery failed:', err);
+      Alert.alert('Error', 'Failed to save to gallery. Please try again.');
+    } finally {
+      setSavingToGallery(false);
+    }
+  };
 
   // Link Parent state
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -411,26 +493,36 @@ export default function GirlsDashboard({ navigation }) {
                       {alert.evidence && alert.evidence.length > 0 ? (
                         <View style={styles.evidenceGrid}>
                           {alert.evidence.map((file, idx) => (
-                            <TouchableOpacity
-                              key={idx}
-                              style={styles.evidenceClipCard}
-                              onPress={() => {
-                                const baseUrl = api.defaults.baseURL?.replace('/api', '') || '';
-                                const fullUrl = file.fileUrl.startsWith('http') ? file.fileUrl : `${baseUrl}${file.fileUrl}`;
-                                setMediaPlayerUrl(fullUrl);
-                                setMediaPlayerType(file.fileType);
-                                setShowMediaPlayer(true);
-                              }}
-                            >
-                              <View style={[styles.clipIcon, { backgroundColor: file.fileType === 'VIDEO' ? '#6200ee10' : '#FF174410' }]}>
-                                {file.fileType === 'VIDEO' ? <Camera color="#6200ee" size={20} /> : <Mic color="#FF1744" size={20} />}
-                              </View>
-                              <View style={styles.clipInfo}>
-                                <Text style={styles.clipTitle}>{file.fileType} Clip #{idx+1}</Text>
-                                <Text style={styles.clipTime}>{new Date(file.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</Text>
-                              </View>
-                              <Volume2 color="#6200ee" size={16} />
-                            </TouchableOpacity>
+                            <View key={idx} style={styles.evidenceClipCard}>
+                              <TouchableOpacity
+                                style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+                                onPress={() => {
+                                  const baseUrl = api.defaults.baseURL?.replace('/api', '') || '';
+                                  const fullUrl = file.fileUrl.startsWith('http') ? file.fileUrl : `${baseUrl}${file.fileUrl}`;
+                                  setMediaPlayerUrl(fullUrl);
+                                  setMediaPlayerType(file.fileType);
+                                  setShowMediaPlayer(true);
+                                }}
+                              >
+                                <View style={[styles.clipIcon, { backgroundColor: file.fileType === 'VIDEO' ? '#6200ee10' : '#FF174410' }]}>
+                                  {file.fileType === 'VIDEO' ? <Camera color="#6200ee" size={20} /> : <Mic color="#FF1744" size={20} />}
+                                </View>
+                                <View style={styles.clipInfo}>
+                                  <Text style={styles.clipTitle}>{file.fileType} Clip #{idx+1}</Text>
+                                  <Text style={styles.clipTime}>{new Date(file.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</Text>
+                                </View>
+                                <Volume2 color="#6200ee" size={16} />
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[styles.saveToGalleryBtn, savingToGallery && styles.saveBtnDisabled]}
+                                onPress={() => saveToGallery(file.fileUrl, file.fileType)}
+                                disabled={savingToGallery}
+                              >
+                                <Text style={styles.saveToGalleryText}>
+                                  {savingToGallery ? '...' : '⬇ Save'}
+                                </Text>
+                              </TouchableOpacity>
+                            </View>
                           ))}
                         </View>
                       ) : (
@@ -543,6 +635,9 @@ const styles = StyleSheet.create({
   clipTitle: { fontSize: 14, fontWeight: 'bold', color: '#333' },
   clipTime: { fontSize: 11, color: '#888', marginTop: 2 },
   noMediaText: { fontSize: 12, color: '#999', textAlign: 'center', padding: 10 },
+  saveToGalleryBtn: { backgroundColor: '#4CAF50', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, marginLeft: 8 },
+  saveToGalleryText: { color: '#FFF', fontSize: 11, fontWeight: 'bold' },
+  saveBtnDisabled: { backgroundColor: '#999' },
   closeVaultBtn: { backgroundColor: '#6200ee', height: 55, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginTop: 20 },
   closeVaultText: { color: '#FFF', fontWeight: 'bold', letterSpacing: 1 },
 
