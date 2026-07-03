@@ -68,6 +68,7 @@ import api from '../utils/api';
 import { LanguageContext } from '../context/LanguageContext';
 import { ThemeContext } from '../context/ThemeContext';
 import { useSafetyMonitor } from '../hooks/useSafetyMonitor';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ensurePermission, PERMISSIONS } from '../utils/permissionHelper';
 
 const { width, height } = Dimensions.get('window');
@@ -87,6 +88,7 @@ export default function BoysDashboard({ navigation }) {
   const { t, lang, changeLanguage } = useContext(LanguageContext);
   const { theme, toggleTheme, themeMode } = useContext(ThemeContext);
   const { currentZone } = useSafetyMonitor();
+  const insets = useSafeAreaInsets();
 
   const [news, setNews] = useState([]);
   const [isSOSLoading, setIsSOSLoading] = useState(false);
@@ -1277,7 +1279,7 @@ export default function BoysDashboard({ navigation }) {
       </View>
 
       {/* 🧭 Bottom Nav */}
-      <View style={[styles.bottomNav, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
+      <View style={[styles.bottomNav, { backgroundColor: theme.card, borderTopColor: theme.border, bottom: insets.bottom > 0 ? insets.bottom : 0, paddingBottom: 10 }]}>
         <TouchableOpacity onPress={() => setActiveTab('home')} style={styles.navItem}>
           <HomeIcon color={activeTab === 'home' ? theme.primary : theme.subtext} size={24} />
         </TouchableOpacity>
@@ -1631,7 +1633,7 @@ const styles = StyleSheet.create({
   dangerSubTitle: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '600', marginTop: 2 },
   newsBtn: { padding: 5, position: 'relative' },
   newsBadge: { position: 'absolute', top: 5, right: 5, width: 10, height: 10, borderRadius: 5, borderWidth: 1, borderColor: '#FFF' },
-  scrollContent: { padding: 20, paddingBottom: 100 },
+  scrollContent: { padding: 20, paddingBottom: 120 },
 
   // HOME
   criticalSection: { marginBottom: 25 },
