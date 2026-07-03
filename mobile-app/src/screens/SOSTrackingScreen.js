@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
   header: { padding: 40, alignItems: 'center', borderBottomLeftRadius: 30, borderBottomRightRadius: 30 },
   headerTop: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 15 },
   headerTitle: { color: '#FFF', fontSize: 24, fontWeight: '900' },
-  timerText: { color: '#FFF', fontSize: 48, fontWeight: 'bold' },
+  timerText: { color: '#FFF', fontSize: Math.min(width * 0.12, 48), fontWeight: 'bold' },
   timerSub: { color: 'rgba(255,255,255,0.8)', fontSize: 12 },
   scrollContent: { padding: 20 },
   cameraContainer: { width: '100%', height: 200, backgroundColor: '#000', borderRadius: 20, overflow: 'hidden', marginBottom: 20 },
