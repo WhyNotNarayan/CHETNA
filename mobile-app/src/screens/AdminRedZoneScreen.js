@@ -141,71 +141,63 @@ const AdminRedZoneScreen = ({ navigation }) => {
           {/* Sindhudurg District Boundary Outline */}
           <Polygon
             coordinates={SINDHUDURG_BOUNDARY}
-            strokeColor="rgba(0, 0, 0, 0.8)"
-            strokeWidth={4}
-            fillColor="rgba(0, 0, 0, 0.08)"
-            zIndex={0}
+            strokeColor="rgba(0, 100, 200, 0.6)"
+            strokeWidth={3}
+            fillColor="rgba(0, 100, 200, 0.05)"
+            identifier="boundary"
           />
-          {zones.map(zone => (
-            <React.Fragment key={zone.id}>
-              {/* Prioritize high-precision path data for curves */}
-              {zone.pathData && JSON.parse(zone.pathData).length > 1 ? (
-                <>
+          {zones.map(zone => {
+            const color = getRiskColor(zone.riskLevel, 0.9, zone.caseCount);
+            let parsedPath = null;
+            try { parsedPath = zone.pathData ? JSON.parse(zone.pathData) : null; } catch (e) { parsedPath = null; }
+
+            // Road with path data (curves)
+            if (parsedPath && Array.isArray(parsedPath) && parsedPath.length > 1) {
+              return (
+                <React.Fragment key={zone.id}>
                   <Polyline
-                    coordinates={JSON.parse(zone.pathData)}
-                    strokeColor={getRiskColor(zone.riskLevel, 0.9, zone.caseCount)}
-                    strokeWidth={6}
-                    lineJoin="round"
-                    lineCap="round"
+                    coordinates={parsedPath}
+                    strokeColor={color}
+                    strokeWidth={7}
                   />
-                  {(() => {
-                    const path = JSON.parse(zone.pathData);
-                    return (
-                      <Marker coordinate={path[path.length - 1]}>
-                        <View style={[styles.customMarker, { backgroundColor: getRiskColor(zone.riskLevel, 1, zone.caseCount) }]}>
-                          <MapPin color="#fff" size={10} />
-                        </View>
-                      </Marker>
-                    );
-                  })()}
-                </>
-              ) : (zone.destLatitude && zone.destLongitude) || (zone.name && zone.name.includes(' To ')) ? (
-                <>
+                  <Marker coordinate={parsedPath[parsedPath.length - 1]} />
+                  <Marker coordinate={{ latitude: zone.latitude, longitude: zone.longitude }} />
+                </React.Fragment>
+              );
+            }
+
+            // Road with destination (straight line)
+            if (zone.destLatitude && zone.destLongitude) {
+              return (
+                <React.Fragment key={zone.id}>
                   <Polyline
                     coordinates={[
                       { latitude: zone.latitude, longitude: zone.longitude },
-                      { latitude: zone.destLatitude || (zone.latitude + 0.005), longitude: zone.destLongitude || (zone.longitude + 0.005) }
+                      { latitude: zone.destLatitude, longitude: zone.destLongitude }
                     ]}
-                    strokeColor={getRiskColor(zone.riskLevel, 0.8, zone.caseCount)}
-                    strokeWidth={5}
+                    strokeColor={color}
+                    strokeWidth={6}
                   />
-                  {zone.destLatitude && (
-                    <Marker coordinate={{ latitude: zone.destLatitude, longitude: zone.destLongitude }}>
-                      <View style={[styles.customMarker, { backgroundColor: getRiskColor(zone.riskLevel, 1, zone.caseCount) }]}>
-                        <MapPin color="#fff" size={10} />
-                      </View>
-                    </Marker>
-                  )}
-                </>
-              ) : (
+                  <Marker coordinate={{ latitude: zone.latitude, longitude: zone.longitude }} />
+                  <Marker coordinate={{ latitude: zone.destLatitude, longitude: zone.destLongitude }} />
+                </React.Fragment>
+              );
+            }
+
+            // Area zone with circle
+            return (
+              <React.Fragment key={zone.id}>
                 <Circle
                   center={{ latitude: zone.latitude, longitude: zone.longitude }}
-                  radius={zone.radius || 200}
-                  fillColor={getRiskColor(zone.riskLevel, 0.3, zone.caseCount)}
-                  strokeColor={getRiskColor(zone.riskLevel, 0.7, zone.caseCount)}
-                  strokeWidth={2}
+                  radius={zone.radius || 300}
+                  fillColor={getRiskColor(zone.riskLevel, 0.25, zone.caseCount)}
+                  strokeColor={color}
+                  strokeWidth={3}
                 />
-              )}
-              <Marker
-                coordinate={{ latitude: zone.latitude, longitude: zone.longitude }}
-                onPress={() => setSelectedZone(zone)}
-              >
-                <View style={[styles.customMarker, { backgroundColor: getRiskColor(zone.riskLevel, 1, zone.caseCount) }]}>
-                  <MapPin color="#fff" size={12} />
-                </View>
-              </Marker>
-            </React.Fragment>
-          ))}
+                <Marker coordinate={{ latitude: zone.latitude, longitude: zone.longitude }} />
+              </React.Fragment>
+            );
+          })}
         </MapView>
 
         {isAdmin && (
@@ -305,7 +297,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
   mapContainer: { flex: 1.5, position: 'relative' },
-  map: { ...StyleSheet.absoluteFillObject },
+  map: { ...StyleSheet.absoluteFillObject, backgroundColor: '#e8e8e8' },
   mapOverlay: { position: 'absolute', top: 15, width: '100%', alignItems: 'center' },
   instructionBox: {
     backgroundColor: 'rgba(0,0,0,0.8)',
