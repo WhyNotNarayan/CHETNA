@@ -1,5 +1,5 @@
 import React, { useContext, useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Dimensions, Alert, Platform, ActivityIndicator, Modal, TextInput, Linking, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Dimensions, Alert, Platform, ActivityIndicator, Modal, TextInput, Linking, Animated, useWindowDimensions } from 'react-native';
 import { Shield, Navigation, Newspaper, Mic, Camera, LogOut, Volume2, AlertTriangle, Users, User, Phone, Heart, Zap } from 'lucide-react-native';
 import * as Location from 'expo-location';
 import { Camera as ExpoCamera } from 'expo-camera';
@@ -13,9 +13,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import api from '../utils/api';
 import { ensurePermission, PERMISSIONS } from '../utils/permissionHelper';
 
-const { width } = Dimensions.get('window');
+const { width: screenWidth } = Dimensions.get('window');
 
 export default function GirlsDashboard({ navigation }) {
+  const { width, height } = useWindowDimensions();
   const { currentZone } = useSafetyMonitor();
   const { logout, userData, setUserData } = useContext(AuthContext);
   const { isMicActive, voicePrompt } = useVolumeSOS(navigation, userData);
@@ -347,9 +348,9 @@ export default function GirlsDashboard({ navigation }) {
         </View>
 
         <View style={styles.sosContainer}>
-          <TouchableOpacity style={styles.sosButton} activeOpacity={0.8} onPress={handleSOS} disabled={isSOSLoading}>
-            <View style={styles.sosOuterRing}>
-              <View style={styles.sosInnerCircle}>
+          <TouchableOpacity style={[styles.sosButton, { width: Math.min(width * 0.45, 200), height: Math.min(width * 0.45, 200), borderRadius: Math.min(width * 0.225, 100) }]} activeOpacity={0.8} onPress={handleSOS} disabled={isSOSLoading}>
+            <View style={[styles.sosOuterRing, { width: Math.min(width * 0.4, 180), height: Math.min(width * 0.4, 180), borderRadius: Math.min(width * 0.2, 90) }]}>
+              <View style={[styles.sosInnerCircle, { width: Math.min(width * 0.32, 140), height: Math.min(width * 0.32, 140), borderRadius: Math.min(width * 0.16, 70) }]}>
                 {isSOSLoading ? <ActivityIndicator size="large" color="#FFF" /> : <Text style={styles.sosText}>SOS</Text>}
               </View>
             </View>
