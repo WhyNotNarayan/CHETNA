@@ -1279,7 +1279,7 @@ export default function BoysDashboard({ navigation }) {
       </View>
 
       {/* 🧭 Bottom Nav */}
-      <View style={[styles.bottomNav, { backgroundColor: theme.card, borderTopColor: theme.border, bottom: insets.bottom > 0 ? insets.bottom : 0, paddingBottom: 10 }]}>
+      <View style={[styles.bottomNav, { backgroundColor: themeMode === 'dark' ? '#1a1a2e' : '#FFFFFF', borderTopColor: theme.border, bottom: insets.bottom > 0 ? insets.bottom : 0, paddingBottom: 10 }]}>
         <TouchableOpacity onPress={() => setActiveTab('home')} style={styles.navItem}>
           <HomeIcon color={activeTab === 'home' ? theme.primary : theme.subtext} size={24} />
         </TouchableOpacity>
@@ -1734,7 +1734,8 @@ const styles = StyleSheet.create({
 
   bottomNav: {
     position: 'absolute', bottom: 0, left: 0, right: 0, height: 70, flexDirection: 'row',
-    justifyContent: 'space-around', alignItems: 'center', borderTopWidth: 0.5, paddingBottom: 10
+    justifyContent: 'space-around', alignItems: 'center', borderTopWidth: 0.5, paddingBottom: 10,
+    elevation: 20, shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1, shadowRadius: 8
   },
   navItem: { padding: 10 },
 
