@@ -16,6 +16,7 @@ import { ThemeContext } from '../context/ThemeContext';
 import { LanguageContext } from '../context/LanguageContext';
 import api from '../utils/api';
 import { ensurePermission, PERMISSIONS } from '../utils/permissionHelper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 
@@ -108,6 +109,7 @@ function buildVoiceMsg(zone, lang) {
 export default function AINavigatorScreen({ route, navigation }) {
   const { themeMode } = useContext(ThemeContext);
   const { lang, t } = useContext(LanguageContext);
+  const insets = useSafeAreaInsets();
 
   const mapRef = useRef(null);
   const locationWatcher = useRef(null);
@@ -422,7 +424,7 @@ export default function AINavigatorScreen({ route, navigation }) {
         </View>
       )}
 
-      <View style={styles.bottomPanel}>
+      <View style={[styles.bottomPanel, { paddingBottom: insets.bottom }]}>
         <LinearGradient colors={['transparent', 'rgba(0,0,0,0.95)']} style={styles.bottomGradient}>
           {destination && eta && (
             <View style={styles.etaRow}>
