@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Alert, ActivityIndicator, Platform } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, Alert, ActivityIndicator, Platform, Dimensions } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { io } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { X, ShieldCheck } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Use the same base URL as your API (without /api)
 const SOCKET_URL = 'http://192.168.1.102:5000';
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function QRScannerScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -94,7 +97,7 @@ export default function QRScannerScreen({ navigation }) {
       />
 
       {/* Overlay UI */}
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}>
             <X color="white" size={30} />
@@ -102,7 +105,7 @@ export default function QRScannerScreen({ navigation }) {
         </View>
 
         <View style={styles.scanFrameContainer}>
-          <View style={styles.scanFrame} />
+          <View style={[styles.scanFrame, { width: Math.min(SCREEN_WIDTH * 0.65, 250), height: Math.min(SCREEN_WIDTH * 0.65, 250) }]} />
           <Text style={styles.scanText}>Align Laptop QR Code within frame</Text>
         </View>
 
