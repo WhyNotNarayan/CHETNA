@@ -66,13 +66,17 @@ const PrivacyConsentScreen = ({ navigation }) => {
         </SafeAreaView>
       </LinearGradient>
 
-      {/* 2. Main Content Card - High Z-Index to cover header */}
+      {/* 2. Main Content Card */}
       <View style={[
         styles.card, 
         { backgroundColor: theme.card },
         Platform.OS === 'web' && { marginTop: 220, zIndex: 2, position: 'relative' }
       ]}>
-        <View style={styles.scrollContent}>
+        <ScrollView 
+          style={styles.scrollArea}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
           <Text style={[styles.title, { color: theme.text }]}>Terms & Conditions</Text>
           
           <View style={styles.metaRow}>
@@ -114,7 +118,7 @@ const PrivacyConsentScreen = ({ navigation }) => {
             </Text>
           </View>
 
-          {/* New Permissions Summary Section */}
+          {/* Permissions Summary Section */}
           <View style={[styles.permCard, { backgroundColor: themeMode === 'dark' ? '#1a1a1a' : '#FFF5F8' }]}>
             <Text style={[styles.permHeader, { color: theme.text }]}>Safety Permissions Required</Text>
             <View style={styles.permItem}>
@@ -140,52 +144,28 @@ const PrivacyConsentScreen = ({ navigation }) => {
             </View>
           </View>
 
-          <View style={{ height: 20 }} />
+          <View style={{ height: 100 }} />
+        </ScrollView>
 
-          {/* Buttons for Web (Inside Flow) */}
-          {Platform.OS === 'web' && (
-            <View style={[styles.footer, { position: 'relative', marginTop: 20, paddingBottom: 20 }]}>
-              <TouchableOpacity 
-                style={[styles.declineBtn, { backgroundColor: themeMode === 'dark' ? '#222' : '#F0F0F0' }]} 
-                onPress={handleDecline}
-              >
-                <Text style={[styles.declineText, { color: theme.subtext }]}>Decline</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.acceptBtnWrapper} onPress={handleAccept} disabled={isRequesting}>
-                <LinearGradient
-                  colors={['#f92b7c', '#791880']}
-                  start={{x: 0, y: 0}} end={{x: 1, y: 0}}
-                  style={styles.acceptBtn}
-                >
-                  {isRequesting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.acceptText}>Accept & Grant</Text>}
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
-        {/* Fixed Buttons for Mobile Only */}
-        {Platform.OS !== 'web' && (
-          <View style={[styles.footer, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
-            <TouchableOpacity 
-              style={[styles.declineBtn, { backgroundColor: themeMode === 'dark' ? '#222' : '#F0F0F0' }]} 
-              onPress={handleDecline}
+        {/* Fixed Footer Buttons */}
+        <View style={[styles.footer, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
+          <TouchableOpacity 
+            style={[styles.declineBtn, { backgroundColor: themeMode === 'dark' ? '#222' : '#F0F0F0' }]} 
+            onPress={handleDecline}
+          >
+            <Text style={[styles.declineText, { color: theme.subtext }]}>Decline</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.acceptBtnWrapper} onPress={handleAccept} disabled={isRequesting}>
+            <LinearGradient
+              colors={['#f92b7c', '#791880']}
+              start={{x: 0, y: 0}} end={{x: 1, y: 0}}
+              style={styles.acceptBtn}
             >
-              <Text style={[styles.declineText, { color: theme.subtext }]}>Decline</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.acceptBtnWrapper} onPress={handleAccept} disabled={isRequesting}>
-              <LinearGradient
-                colors={['#f92b7c', '#791880']}
-                start={{x: 0, y: 0}} end={{x: 1, y: 0}}
-                style={styles.acceptBtn}
-              >
-                {isRequesting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.acceptText}>Accept & Grant</Text>}
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        )}
+              {isRequesting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.acceptText}>Accept & Grant</Text>}
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
       </View>
     </>
   );
@@ -249,9 +229,13 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 20,
   },
+  scrollArea: {
+    flex: 1,
+  },
   scrollContent: {
     padding: 30,
     paddingTop: Platform.OS === 'web' ? 50 : 30,
+    paddingBottom: 20,
   },
   title: {
     fontSize: 32,
@@ -288,16 +272,11 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   footer: {
-    position: Platform.OS === 'web' ? 'relative' : 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     flexDirection: 'row',
     padding: 25,
-    paddingBottom: Platform.OS === 'web' ? 25 : 40,
+    paddingBottom: 40,
     gap: 15,
     borderTopWidth: 1,
-    marginTop: Platform.OS === 'web' ? 20 : 0,
   },
   declineBtn: {
     flex: 1,
