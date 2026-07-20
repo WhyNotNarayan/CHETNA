@@ -12,11 +12,11 @@ import { AuthContext } from '../context/AuthContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '../utils/api';
 import { ensurePermission, PERMISSIONS } from '../utils/permissionHelper';
-
-const { width: screenWidth } = Dimensions.get('window');
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function GirlsDashboard({ navigation }) {
   const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { currentZone } = useSafetyMonitor();
   const { logout, userData, setUserData } = useContext(AuthContext);
   const { isMicActive, voicePrompt } = useVolumeSOS(navigation, userData);
@@ -277,15 +277,18 @@ export default function GirlsDashboard({ navigation }) {
     }
   };
 
+  const sosSize = Math.min(width * 0.38, 180);
+  const actionWidth = (width - width * 0.1 - 15) / 2;
+
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.dashboardHeader}>
-        <View>
-          <Text style={styles.headerWelcome}>Hello, {userData?.fullName?.split(' ')[0] || 'User'}</Text>
-          <Text style={styles.headerTagline}>Sindhudurg Safety Hub</Text>
+    <View style={styles.container}>
+      <View style={[styles.dashboardHeader, { paddingTop: insets.top + 10, paddingBottom: 12, paddingHorizontal: width * 0.05 }]}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.headerWelcome, { fontSize: Math.min(width * 0.055, 22) }]} numberOfLines={1}>Hello, {userData?.fullName?.split(' ')[0] || 'User'}</Text>
+          <Text style={[styles.headerTagline, { fontSize: Math.min(width * 0.033, 12) }]}>Sindhudurg Safety Hub</Text>
         </View>
         <TouchableOpacity style={styles.logoutIconButton} onPress={handleLogout}>
-          <LogOut color="#FF4444" size={24} />
+          <LogOut color="#FF4444" size={Math.min(width * 0.06, 24)} />
         </TouchableOpacity>
       </View>
 
@@ -315,7 +318,7 @@ export default function GirlsDashboard({ navigation }) {
         </TouchableOpacity>
       )}
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingHorizontal: width * 0.05, paddingBottom: insets.bottom + 30 }]} showsVerticalScrollIndicator={false}>
         {/* 🤖 AI SAFETY INSIGHT CARD */}
         <View style={styles.aiInsightCard}>
           <LinearGradient colors={['#6200ee', '#791880']} style={styles.aiGradient} start={{x:0, y:0}} end={{x:1, y:1}}>
@@ -340,41 +343,32 @@ export default function GirlsDashboard({ navigation }) {
         </View>
 
         <View style={[styles.statusCard, currentZone ? styles.dangerCard : styles.safeCard]}>
-          <Shield color={currentZone ? "#ff4d4d" : "#4CAF50"} size={32} />
+          <Shield color={currentZone ? "#ff4d4d" : "#4CAF50"} size={Math.min(width * 0.08, 32)} />
           <View style={styles.statusTextContainer}>
-            <Text style={styles.statusTitle}>{currentZone ? 'DANGER ZONE' : 'YOU ARE SAFE'}</Text>
-            <Text style={styles.statusSubtitle}>{currentZone ? `Entering ${currentZone.name}` : 'Scanning your surroundings...'}</Text>
+            <Text style={[styles.statusTitle, { fontSize: Math.min(width * 0.048, 18) }]}>{currentZone ? 'DANGER ZONE' : 'YOU ARE SAFE'}</Text>
+            <Text style={[styles.statusSubtitle, { fontSize: Math.min(width * 0.037, 14) }]} numberOfLines={1}>{currentZone ? `Entering ${currentZone.name}` : 'Scanning your surroundings...'}</Text>
           </View>
         </View>
 
         <View style={styles.sosContainer}>
-          <TouchableOpacity style={[styles.sosButton, { width: Math.min(width * 0.45, 200), height: Math.min(width * 0.45, 200), borderRadius: Math.min(width * 0.225, 100) }]} activeOpacity={0.8} onPress={handleSOS} disabled={isSOSLoading}>
-            <View style={[styles.sosOuterRing, { width: Math.min(width * 0.4, 180), height: Math.min(width * 0.4, 180), borderRadius: Math.min(width * 0.2, 90) }]}>
-              <View style={[styles.sosInnerCircle, { width: Math.min(width * 0.32, 140), height: Math.min(width * 0.32, 140), borderRadius: Math.min(width * 0.16, 70) }]}>
-                {isSOSLoading ? <ActivityIndicator size="large" color="#FFF" /> : <Text style={styles.sosText}>SOS</Text>}
+          <TouchableOpacity style={[styles.sosButton, { width: sosSize, height: sosSize, borderRadius: sosSize / 2 }]} activeOpacity={0.8} onPress={handleSOS} disabled={isSOSLoading}>
+            <View style={[styles.sosOuterRing, { width: sosSize * 0.9, height: sosSize * 0.9, borderRadius: sosSize * 0.45 }]}>
+              <View style={[styles.sosInnerCircle, { width: sosSize * 0.7, height: sosSize * 0.7, borderRadius: sosSize * 0.35 }]}>
+                {isSOSLoading ? <ActivityIndicator size="large" color="#FFF" /> : <Text style={[styles.sosText, { fontSize: Math.min(width * 0.1, 36) }]}>SOS</Text>}
               </View>
             </View>
           </TouchableOpacity>
-          <Text style={styles.sosInstruction}>Tap once, or say "Help Me"</Text>
+          <Text style={[styles.sosInstruction, { marginTop: 12, fontSize: Math.min(width * 0.035, 13) }]}>Tap once, or say "Help Me"</Text>
         </View>
 
-        <View style={styles.actionsGrid}>
-          <ActionItem icon={<Navigation color="#6200ee" />} label="Safe Route" onPress={() => navigation.navigate('AINavigator')} />
-          <ActionItem icon={<Newspaper color="#6200ee" />} label="Local News" />
-          <ActionItem icon={<Users color="#6200ee" />} label="Link Parent" onPress={() => setShowLinkModal(true)} />
-          <ActionItem
-            icon={<Camera color="#6200ee" />}
-            label="Evidence"
-            onPress={async () => {
-              const hasCam = await ensurePermission(PERMISSIONS.CAMERA);
-              if (hasCam) setShowEvidencePasswordModal(true);
-            }}
-          />
+        <View style={[styles.actionsGrid, { marginBottom: 30, gap: 12 }]}>
+          <ActionItem icon={<Navigation color="#6200ee" size={Math.min(width * 0.06, 22)} />} label="Safe Route" itemWidth={actionWidth} onPress={() => navigation.navigate('AINavigator')} />
+          <ActionItem icon={<Newspaper color="#6200ee" size={Math.min(width * 0.06, 22)} />} label="Local News" itemWidth={actionWidth} />
+          <ActionItem icon={<Users color="#6200ee" size={Math.min(width * 0.06, 22)} />} label="Link Parent" itemWidth={actionWidth} onPress={() => setShowLinkModal(true)} />
+          <ActionItem icon={<Camera color="#6200ee" size={Math.min(width * 0.06, 22)} />} label="Evidence" itemWidth={actionWidth} onPress={async () => { const hasCam = await ensurePermission(PERMISSIONS.CAMERA); if (hasCam) setShowEvidencePasswordModal(true); }} />
         </View>
 
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Safety Updates</Text>
-        </View>
+        <Text style={[styles.sectionTitle, { fontSize: Math.min(width * 0.048, 18), marginBottom: 12 }]}>Safety Updates</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.newsScroll}>
           {news.map(item => (
             <NewsCard key={item.id} title={item.title} content={item.content} time={item.createdAt ? new Date(item.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Now'} type={item.type} />
@@ -541,19 +535,21 @@ export default function GirlsDashboard({ navigation }) {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
-const ActionItem = ({ icon, label, onPress }) => (
-  <TouchableOpacity style={styles.actionItem} onPress={onPress}>
+const ActionItem = ({ icon, label, onPress, itemWidth }) => (
+  <TouchableOpacity style={[styles.actionItem, { width: itemWidth || '47%' }]} onPress={onPress}>
     <View style={styles.actionIcon}>{icon}</View>
     <Text style={styles.actionLabel}>{label}</Text>
   </TouchableOpacity>
 );
 
-const NewsCard = ({ title, content, time, type }) => (
-  <View style={[styles.newsCard, type === 'ACCIDENT' && { borderColor: '#FF4444', borderWidth: 1 }]}>
+const NewsCard = ({ title, content, time, type }) => {
+  const { width: nw } = Dimensions.get('window');
+  return (
+  <View style={[styles.newsCard, { width: Math.min(nw * 0.65, 250), marginRight: 12 }, type === 'ACCIDENT' && { borderColor: '#FF4444', borderWidth: 1 }]}>
     <View style={[styles.newsTagContainer, { backgroundColor: type === 'ACCIDENT' ? '#FF4444' : '#6200ee' }]}>
        <Text style={styles.newsTagWhite}>{type || 'NEWS'}</Text>
     </View>
@@ -561,45 +557,46 @@ const NewsCard = ({ title, content, time, type }) => (
     <Text style={styles.newsContent} numberOfLines={2}>{content}</Text>
     <Text style={styles.newsTime}>{time}</Text>
   </View>
-);
+  );
+};
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8f9fa' },
-  dashboardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  headerWelcome: { fontSize: 20, fontWeight: 'bold', color: '#333' },
-  headerTagline: { fontSize: 12, color: '#888', marginTop: 2 },
+  dashboardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  headerWelcome: { fontWeight: 'bold', color: '#333' },
+  headerTagline: { color: '#888', marginTop: 2 },
   logoutIconButton: { padding: 8, backgroundColor: 'rgba(255, 68, 68, 0.05)', borderRadius: 12 },
-  scrollContent: { padding: 20 },
-  statusCard: { flexDirection: 'row', padding: 20, borderRadius: 20, alignItems: 'center', marginBottom: 30, backgroundColor: 'white', elevation: 4 },
-  safeCard: { borderLeftWidth: 8, borderLeftColor: '#4CAF50' },
-  dangerCard: { borderLeftWidth: 8, borderLeftColor: '#ff4d4d' },
+  scrollContent: { paddingTop: 10 },
+  statusCard: { flexDirection: 'row', padding: 16, borderRadius: 20, alignItems: 'center', marginBottom: 24, backgroundColor: 'white', elevation: 4 },
+  safeCard: { borderLeftWidth: 6, borderLeftColor: '#4CAF50' },
+  dangerCard: { borderLeftWidth: 6, borderLeftColor: '#ff4d4d' },
   statusTextContainer: { marginLeft: 15 },
   statusTitle: { fontSize: 18, fontWeight: '800', letterSpacing: 1 },
   statusSubtitle: { fontSize: 14, color: '#666', marginTop: 4 },
-  sosContainer: { alignItems: 'center', marginBottom: 40 },
+  sosContainer: { alignItems: 'center', marginBottom: 30 },
   sosButton: { width: 200, height: 200, borderRadius: 100, justifyContent: 'center', alignItems: 'center' },
   sosOuterRing: { width: 180, height: 180, borderRadius: 90, backgroundColor: '#ffebeb', justifyContent: 'center', alignItems: 'center' },
   sosInnerCircle: { width: 140, height: 140, borderRadius: 70, backgroundColor: '#ff4d4d', justifyContent: 'center', alignItems: 'center', elevation: 8 },
   sosText: { color: 'white', fontSize: 36, fontWeight: '900' },
   sosInstruction: { marginTop: 15, color: '#666', fontWeight: '500' },
-  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-start', marginBottom: 30, gap: 15 },
-  actionItem: { width: '47%', backgroundColor: 'white', padding: 20, borderRadius: 20, alignItems: 'center', elevation: 2 },
+  actionsGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 30 },
+  actionItem: { backgroundColor: 'white', padding: 16, borderRadius: 20, alignItems: 'center', elevation: 2, marginBottom: 12 },
   actionLabel: { fontSize: 14, fontWeight: '600', color: '#333', marginTop: 10 },
   sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 15 },
   newsScroll: { marginBottom: 20 },
-  newsCard: { width: 250, backgroundColor: 'white', padding: 15, borderRadius: 15, marginRight: 15, elevation: 2 },
+  newsCard: { backgroundColor: 'white', padding: 15, borderRadius: 15, elevation: 2 },
   newsTagContainer: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 5, marginBottom: 8 },
   newsTagWhite: { color: 'white', fontSize: 9, fontWeight: '800' },
   newsTitle: { fontSize: 16, fontWeight: '700', marginBottom: 5 },
   newsContent: { fontSize: 13, color: '#666', lineHeight: 18 },
   newsTime: { fontSize: 11, color: '#999', marginTop: 10 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 20 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalContent: { backgroundColor: '#FFF', borderRadius: 25, padding: 25 },
   modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 10, color: '#6200ee' },
   modalSub: { fontSize: 13, color: '#666', marginBottom: 15 },
   inputGroup: { marginBottom: 15 },
   inputLabel: { fontSize: 12, fontWeight: 'bold', color: '#6200ee', marginBottom: 5 },
-  input: { backgroundColor: '#f0f0f5', height: 50, borderRadius: 12, paddingHorizontal: 15, color: '#333' },
+  input: { backgroundColor: '#f0f0f5', height: 50, borderRadius: 12, paddingHorizontal: 15, color: '#333', fontSize: 15 },
   saveBtn: { height: 55, backgroundColor: '#6200ee', borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginTop: 10 },
   saveBtnText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
   cancelTextLink: { textAlign: 'center', color: '#999', fontSize: 14, marginTop: 15, fontWeight: 'bold' },
@@ -610,8 +607,8 @@ const styles = StyleSheet.create({
   dangerSubTitle: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '600' },
 
   // AI Card Styles
-  aiInsightCard: { marginBottom: 20, borderRadius: 20, overflow: 'hidden', elevation: 8 },
-  aiGradient: { padding: 20 },
+  aiInsightCard: { marginBottom: 16, borderRadius: 20, overflow: 'hidden', elevation: 8 },
+  aiGradient: { padding: 16 },
   aiHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 15 },
   aiTitle: { color: '#FFF', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   aiMeterRow: { flexDirection: 'row', alignItems: 'center' },
