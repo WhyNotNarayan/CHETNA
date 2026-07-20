@@ -1,5 +1,6 @@
 const prisma = require('../lib/prisma');
 const { findNearestSecretCops } = require('../utils/geo');
+const { sendParentAlert, sendBulkPushNotifications } = require('../utils/pushNotification');
 const crypto = require('crypto');
 
 exports.triggerSOS = async (req, res) => {
@@ -42,6 +43,21 @@ exports.triggerSOS = async (req, res) => {
             isDelivered: false
           }
         });
+
+        // Send push notification to parent
+        try {
+          const parentUser = await prisma.user.findUnique({ where: { phone: contact.phone } });
+          if (parentUser && parentUser.pushToken) {
+            await sendParentAlert(
+              parentUser.pushToken,
+              userWithContacts.fullName,
+              'SOS',
+              { alertId: alert.id, latitude: parseFloat(latitude), longitude: parseFloat(longitude) }
+            );
+          }
+        } catch (pushError) {
+          console.error('[Push] Failed to notify parent:', pushError.message);
+        }
       }
     }
 
@@ -583,6 +599,60 @@ exports.getAlertEvidence = async (req, res) => {
   } catch (error) {
     console.error('getAlertEvidence Error:', error);
     res.status(500).json({ success: false, message: 'Failed to retrieve evidence.' });
+  }
+};
+
+// Shake Alert — Parent-only notification (no Secret Cops)
+exports.handleShakeAlert = async (req, res) => {
+  try {
+    const { userId, latitude, longitude } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId is required' });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { contacts: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    let parentNotified = false;
+
+    if (user.contacts && user.contacts.length > 0) {
+      for (const contact of user.contacts) {
+        try {
+          const parentUser = await prisma.user.findUnique({ where: { phone: contact.phone } });
+          if (parentUser && parentUser.pushToken) {
+            await sendParentAlert(
+              parentUser.pushToken,
+              user.fullName,
+              'SHAKE',
+              { latitude: parseFloat(latitude) || 0, longitude: parseFloat(longitude) || 0 }
+            );
+            parentNotified = true;
+          }
+        } catch (pushError) {
+          console.error('[Push] Failed to notify parent on shake:', pushError.message);
+        }
+      }
+    }
+
+    console.log(`[ShakeAlert] User: ${user.fullName}, Parent notified: ${parentNotified}`);
+
+    res.json({
+      success: true,
+      parentNotified,
+      message: parentNotified
+        ? 'Parent notified about unusual movement'
+        : 'No parent push token available — parent will see alert on next app open'
+    });
+  } catch (error) {
+    console.error('Shake Alert Error:', error);
+    res.status(500).json({ success: false, error: 'Failed to process shake alert' });
   }
 };
 
