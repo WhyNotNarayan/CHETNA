@@ -1,6 +1,6 @@
 import React, { useContext, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Dimensions, ScrollView, StatusBar, Platform, ActivityIndicator, Alert } from 'react-native';
-import { ChevronLeft, HelpCircle, Clock, ShieldCheck, MapPin, Camera, Mic } from 'lucide-react-native';
+import { ChevronLeft, HelpCircle, Clock, ShieldCheck, MapPin, Camera, Mic, Check } from 'lucide-react-native';
 import { ThemeContext } from '../context/ThemeContext';
 import { LanguageContext } from '../context/LanguageContext';
 import { AuthContext } from '../context/AuthContext';
@@ -14,6 +14,7 @@ const PrivacyConsentScreen = ({ navigation }) => {
   const { t, lang } = useContext(LanguageContext);
   const { completeOnboarding, logout } = useContext(AuthContext);
   const [isRequesting, setIsRequesting] = useState(false);
+  const [agreed, setAgreed] = useState(false);
 
   const handleAccept = async () => {
     setIsRequesting(true);
@@ -150,21 +151,40 @@ const PrivacyConsentScreen = ({ navigation }) => {
         {/* Fixed Footer Buttons */}
         <View style={[styles.footer, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
           <TouchableOpacity 
-            style={[styles.declineBtn, { backgroundColor: themeMode === 'dark' ? '#222' : '#F0F0F0' }]} 
-            onPress={handleDecline}
+            style={styles.checkboxRow}
+            onPress={() => setAgreed(!agreed)}
+            activeOpacity={0.7}
           >
-            <Text style={[styles.declineText, { color: theme.subtext }]}>Decline</Text>
+            <View style={[styles.checkbox, agreed && styles.checkboxChecked, { borderColor: agreed ? '#d63384' : theme.subtext }]}>
+              {agreed && <Check size={14} color="#FFF" strokeWidth={3} />}
+            </View>
+            <Text style={[styles.checkboxLabel, { color: theme.text }]}>
+              I have read and agree to the Terms & Conditions
+            </Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.acceptBtnWrapper} onPress={handleAccept} disabled={isRequesting}>
-            <LinearGradient
-              colors={['#f92b7c', '#791880']}
-              start={{x: 0, y: 0}} end={{x: 1, y: 0}}
-              style={styles.acceptBtn}
+
+          <View style={styles.footerBtns}>
+            <TouchableOpacity 
+              style={[styles.declineBtn, { backgroundColor: themeMode === 'dark' ? '#222' : '#F0F0F0' }]} 
+              onPress={handleDecline}
             >
-              {isRequesting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.acceptText}>Accept & Grant</Text>}
-            </LinearGradient>
-          </TouchableOpacity>
+              <Text style={[styles.declineText, { color: theme.subtext }]}>Decline</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.acceptBtnWrapper, !agreed && styles.acceptBtnDisabled]} 
+              onPress={handleAccept} 
+              disabled={isRequesting || !agreed}
+            >
+              <LinearGradient
+                colors={agreed ? ['#f92b7c', '#791880'] : ['#999', '#777']}
+                start={{x: 0, y: 0}} end={{x: 1, y: 0}}
+                style={styles.acceptBtn}
+              >
+                {isRequesting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.acceptText}>Accept & Grant</Text>}
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     </>
@@ -272,11 +292,36 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   footer: {
-    flexDirection: 'row',
     padding: 25,
     paddingBottom: 40,
-    gap: 15,
     borderTopWidth: 1,
+  },
+  checkboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 18,
+    gap: 12,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: '#d63384',
+    borderColor: '#d63384',
+  },
+  checkboxLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    flex: 1,
+  },
+  footerBtns: {
+    flexDirection: 'row',
+    gap: 15,
   },
   declineBtn: {
     flex: 1,
@@ -299,6 +344,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 10,
     elevation: 8,
+  },
+  acceptBtnDisabled: {
+    elevation: 0,
+    shadowOpacity: 0,
   },
   acceptBtn: {
     flex: 1,
