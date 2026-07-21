@@ -36,6 +36,7 @@ const alertRoutes = require('./routes/alerts');
 const adminRoutes = require('./routes/admin');
 const newsRoutes = require('./routes/news');
 const evidenceRoutes = require('./routes/evidence');
+const guardianRoutes = require('./routes/guardian');
 
 // Use Routes
 app.use('/api/auth', authRoutes);
@@ -44,6 +45,11 @@ app.use('/api/alerts', alertRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/news', newsRoutes);
 app.use('/evidence', evidenceRoutes);
+app.use('/api/guardian', guardianRoutes);
+
+// Start Guardian Timer cron job
+const { startGuardianCron } = require('./services/guardianCron');
+startGuardianCron();
 
 app.listen(PORT, () => {
   console.log(`🚀 CHETNA Backend running on http://localhost:${PORT}`);
