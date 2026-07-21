@@ -37,6 +37,7 @@ model User {
   points        Int      @default(0)    
   level         Int      @default(1)    // New: User Rank Level
   awards        Int      @default(0)    // New: Count of Admin approvals
+  pushToken     String?  // Expo push notification token
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   contacts      EmergencyContact[]
@@ -44,6 +45,8 @@ model User {
   responses     SafetyResponse[]
   suggestions   HazardSuggestion[] // New: Danger road reports
   lastLocation  Location?
+  gpsHistory    GpsHistory[]
+  guardianSessions GuardianTimerSession[]
 }
 
 model EmergencyContact {
@@ -76,6 +79,7 @@ model RedZone {
   description String?
   isVerified  Boolean  @default(true) // False if suggested by user but not approved by admin
   createdAt   DateTime @default(now())
+  guardianSessions GuardianTimerSession[]
 }
 
 model HazardSuggestion {
@@ -171,4 +175,33 @@ model News {
   source    String?
   type      String   @default("INFO")
   createdAt DateTime @default(now())
+}
+
+model GpsHistory {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  latitude  Float
+  longitude Float
+  batteryLevel Float?
+  timestamp DateTime @default(now())
+
+  @@index([userId])
+  @@index([timestamp])
+}
+
+model GuardianTimerSession {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  zoneId          String
+  zone            RedZone  @relation(fields: [zoneId], references: [id])
+  entryTime       DateTime
+  expectedExitTime DateTime
+  alertTime       DateTime
+  status          String   @default("ACTIVE") // ACTIVE, COMPLETED, EXPIRED
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([status])
 }
