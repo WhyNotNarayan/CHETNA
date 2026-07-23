@@ -289,3 +289,24 @@ exports.respondLinkRequest = async (req, res) => {
   }
 };
 
+exports.savePushToken = async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const { pushToken } = req.body;
+
+    if (!userId) return res.status(401).json({ success: false, message: 'User not authenticated' });
+    if (!pushToken) return res.status(400).json({ success: false, message: 'Push token is required' });
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { pushToken }
+    });
+
+    console.log(`[Push] Token saved for user ${userId}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('savePushToken Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to save push token' });
+  }
+};
+
