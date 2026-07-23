@@ -12,5 +12,6 @@ router.post('/apply-secret-cop', protect, userController.applySecretCop);
 router.get('/profile/:id', protect, userController.getProfile);
 router.post('/link-parent', protect, userController.linkParent);
 router.post('/respond-link-request', protect, userController.respondLinkRequest);
+router.post('/push-token', protect, userController.savePushToken);
 
 module.exports = router;
