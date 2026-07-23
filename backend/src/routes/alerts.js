@@ -16,6 +16,7 @@ router.get('/:id/verify-evidence', alertController.verifyEvidenceFile);
 router.post('/:id/upload-evidence-file', alertController.uploadEvidenceFile);
 router.get('/parent-notifications', protect, alertController.getParentNotifications);
 router.get('/my-evidence', protect, alertController.getMyAlertsWithEvidence);
+router.post('/shake-alert', alertController.handleShakeAlert);
 router.get('/:id/evidence', protect, alertController.getAlertEvidence);
 
 module.exports = router;
