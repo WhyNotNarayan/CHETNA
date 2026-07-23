@@ -84,4 +84,30 @@ router.post('/suggest-hazard', async (req, res) => {
   }
 });
 
+// GPS HISTORY SYNC (background task sends location periodically)
+router.post('/gps-history', protect, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { latitude, longitude, batteryLevel } = req.body;
+
+    if (!latitude || !longitude) {
+      return res.status(400).json({ success: false, message: 'Coordinates required' });
+    }
+
+    await prisma.gpsHistory.create({
+      data: {
+        userId,
+        latitude: parseFloat(latitude),
+        longitude: parseFloat(longitude),
+        batteryLevel: batteryLevel ? parseFloat(batteryLevel) : null,
+      }
+    });
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('GPS History Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to store GPS history' });
+  }
+});
+
 module.exports = router;
