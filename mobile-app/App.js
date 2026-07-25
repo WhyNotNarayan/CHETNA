@@ -6,6 +6,7 @@ import { AuthProvider, AuthContext } from './src/context/AuthContext';
 import { ThemeProvider, ThemeContext } from './src/context/ThemeContext';
 import { LanguageProvider } from './src/context/LanguageContext';
 import { initDb } from './src/database/localDb';
+import { useShakeDetection } from './src/hooks/useShakeDetection';
 
 // Import Screens
 import LanguageSelectScreen from './src/screens/LanguageSelectScreen';
@@ -26,12 +27,24 @@ import AdminRedZoneScreen from './src/screens/AdminRedZoneScreen';
 import AdminAddCrimeScreen from './src/screens/AdminAddCrimeScreen';
 import AdminAddNewsScreen from './src/screens/AdminAddNewsScreen';
 import AdminManageSecretCopsScreen from './src/screens/AdminManageSecretCopsScreen';
+import ShakeAlertScreen from './src/screens/ShakeAlertScreen';
 
 const Stack = createStackNavigator();
 
-function AppNavigator() {
+function AppNavigator({ navigationRef }) {
   const { userToken, userData, isLoading, hasCompletedOnboarding } = useContext(AuthContext);
   const { theme } = useContext(ThemeContext);
+  const { isShaking } = useShakeDetection();
+
+  useEffect(() => {
+    if (isShaking && navigationRef.current && userData?.role === 'GIRL') {
+      const currentRoute = navigationRef.current.getCurrentRoute()?.name;
+      const alreadyInEmergency = currentRoute === 'SOSTracking' || currentRoute === 'ShakeAlert';
+      if (!alreadyInEmergency) {
+        navigationRef.current.navigate('ShakeAlert');
+      }
+    }
+  }, [isShaking]);
 
   if (isLoading) {
     return (
@@ -77,6 +90,7 @@ function AppNavigator() {
               <Stack.Screen name="SOSTracking" component={SOSTrackingScreen} />
               <Stack.Screen name="AINavigator" component={AINavigatorScreen} />
               <Stack.Screen name="QRScanner" component={QRScannerScreen} />
+              <Stack.Screen name="ShakeAlert" component={ShakeAlertScreen} />
             </>
           ) : (
             // Helper Flow (Boy / Secret Cop)
@@ -95,6 +109,8 @@ function AppNavigator() {
 }
 
 export default function App() {
+  const navigationRef = React.useRef(null);
+
   useEffect(() => {
     initDb().catch(err => console.error('Database Init Error:', err));
   }, []);
@@ -103,8 +119,8 @@ export default function App() {
     <AuthProvider>
       <LanguageProvider>
         <ThemeProvider>
-          <NavigationContainer>
-            <AppNavigator />
+          <NavigationContainer ref={navigationRef}>
+            <AppNavigator navigationRef={navigationRef} />
           </NavigationContainer>
         </ThemeProvider>
       </LanguageProvider>
