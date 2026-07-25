@@ -23,6 +23,7 @@ function withVolumeKeyListener(config) {
         'override fun getMainComponentName(): String = "main"',
         `override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
     if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+      if (event?.repeatCount ?: 0 > 0) return true
       val now = System.currentTimeMillis()
       if (now - lastPressTime > PRESS_WINDOW) {
         pressCount = 0
@@ -32,18 +33,38 @@ function withVolumeKeyListener(config) {
       if (pressCount >= REQUIRED_PRESSES) {
         pressCount = 0
         sendVolumeEvent()
-        return true
       }
       return true
     }
     return super.onKeyDown(keyCode, event)
   }
 
+  override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
+    if (keyCode == KeyEvent.KEYCODE_VOLUME_UP || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+      return true
+    }
+    return super.onKeyUp(keyCode, event)
+  }
+
   private fun sendVolumeEvent() {
     try {
       val app = application as? ReactApplication ?: return
-      val host = app.reactHost ?: return
-      val context = host.currentReactContext ?: return
+      val reactHost = app.reactHost
+      val context = reactHost?.currentReactContext
+      if (context == null) {
+        // Retry after a short delay if context not ready
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+          try {
+            val retryContext = reactHost?.currentReactContext ?: return@postDelayed
+            val params = Arguments.createMap()
+            params.putBoolean("triggered", true)
+            retryContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java).emit("onVolumePress", params)
+          } catch (e: Exception) {
+            e.printStackTrace()
+          }
+        }, 1000)
+        return
+      }
       val params = Arguments.createMap()
       params.putBoolean("triggered", true)
       context.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java).emit("onVolumePress", params)
