@@ -1,11 +1,10 @@
 {
-  "expo": {
-    "name": "Chetna",
-    "slug": "chetna",
-    "version": "1.0.0",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "automatic",
+    "expo": {
+      "name": "Chetna",
+      "slug": "chetna",
+      "version": "1.0.0",
+      "orientation": "portrait",
+      "icon": "./assets/icon.png",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -46,7 +45,12 @@
       "android"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": ["location", "fetch", "processing"],
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Chetna needs background location access to detect when you enter danger zones and send safety alerts even when the app is closed.",
+        "NSLocationWhenInUseUsageDescription": "Chetna needs your location to detect nearby crime zones and provide real-time safety alerts."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -64,7 +68,8 @@
         "android.permission.ACCESS_BACKGROUND_LOCATION",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_LOCATION",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.WAKE_LOCK"
       ],
       "package": "com.anonymous.chetna"
     },
