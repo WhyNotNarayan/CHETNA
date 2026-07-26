@@ -1,6 +1,9 @@
 import React, { createContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import { startLocationTracking, stopLocationTracking } from '../utils/locationService';
+import { registerBackgroundTasks, unregisterBackgroundTasks } from '../utils/backgroundService';
+import api from '../utils/api';
 
 export const AuthContext = createContext();
 
@@ -19,6 +22,10 @@ export const AuthProvider = ({ children }) => {
 
       // START TRACKING ON LOGIN
       startLocationTracking().catch(e => console.log('Tracking Start Error:', e));
+      registerBackgroundTasks().catch(e => console.log('Background Tasks Error:', e));
+
+      // REGISTER PUSH TOKEN
+      registerPushToken().catch(e => console.log('Push Token Error:', e));
     } catch (e) {
       console.warn("Failed to save auth data", e);
     }
@@ -42,6 +49,7 @@ export const AuthProvider = ({ children }) => {
 
       // STOP TRACKING ON LOGOUT
       stopLocationTracking().catch(e => console.log('Tracking Stop Error:', e));
+      unregisterBackgroundTasks().catch(e => console.log('Background Tasks Stop Error:', e));
     } catch (e) {
       console.warn("Failed to clear auth data", e);
     }
@@ -61,11 +69,28 @@ export const AuthProvider = ({ children }) => {
 
         // RESUME TRACKING IF LOGGED IN
         startLocationTracking().catch(e => console.log('Tracking Resume Error:', e));
+        registerBackgroundTasks().catch(e => console.log('Background Tasks Resume Error:', e));
+        registerPushToken().catch(e => console.log('Push Token Resume Error:', e));
       }
     } catch (e) {
       console.warn("Failed to load auth data", e);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const registerPushToken = async () => {
+    try {
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status !== 'granted') return;
+
+      const tokenData = await Notifications.getExpoPushTokenAsync();
+      if (tokenData && tokenData.data) {
+        await api.post('/auth/push-token', { pushToken: tokenData.data });
+        console.log('✅ Push token registered');
+      }
+    } catch (error) {
+      console.warn('Push token registration failed:', error.message);
     }
   };
 
