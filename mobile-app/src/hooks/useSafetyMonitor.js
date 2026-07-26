@@ -6,7 +6,6 @@ import api from '../utils/api';
 import { getLocalRedZones, saveRedZones } from '../database/localDb';
 import { isTimeInRange } from '../utils/time';
 
-// Configure how notifications look when app is in foreground
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -40,7 +39,7 @@ const getVoiceMessage = (zone) => {
 };
 
 function getDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371000; // Radius of the Earth in meters
+  const R = 6371000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -51,14 +50,14 @@ function getDistance(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-export function useSafetyMonitor() {
+export function useSafetyMonitor(guardianTimer = null) {
   const [currentZone, setCurrentZone] = useState(null);
-  const [allZones, setAllZones] = useState([]);
   const warnedZones = useRef(new Set());
   const locationWatcher = useRef(null);
+  const lastZoneId = useRef(null);
+  const zonesRef = useRef([]);
 
   useEffect(() => {
-    // Request notification permissions
     const requestNotif = async () => {
       const { status } = await Notifications.requestPermissionsAsync();
       if (status !== 'granted') console.log('Notification permission not granted');
@@ -68,38 +67,102 @@ export function useSafetyMonitor() {
 
   const fetchZones = async () => {
     try {
-      // Try local SQLite first
       let redZones = await getLocalRedZones();
       if (redZones && redZones.length > 0) {
-        setAllZones(redZones.map(z => ({
+        const mapped = redZones.map(z => ({
           id: z.id,
           name: z.name,
           latitude: parseFloat(z.latitude),
           longitude: parseFloat(z.longitude),
-          radius: parseFloat(z.radius) || 100, // Default 100m
+          radius: parseFloat(z.radius) || 500,
           riskLevel: z.risk_level,
           startTime: z.start_time || z.startTime,
           endTime: z.end_time || z.endTime,
           warningMessage: z.warning_message || z.description,
           type: z.type
-        })));
+        }));
+        zonesRef.current = mapped;
       }
 
-      // Sync with remote
       const res = await api.get('/safety/red-zones');
-      if (res.data.success) {
-        setAllZones(res.data.zones);
-        // Save to local SQLite for offline access
-        await saveRedZones(res.data.zones);
+      if (res.data.success && res.data.zones.length > 0) {
+        const apiZones = res.data.zones.map(z => ({
+          id: z.id,
+          name: z.name,
+          latitude: z.latitude,
+          longitude: z.longitude,
+          radius: z.radius || 500,
+          riskLevel: z.riskLevel,
+          startTime: z.startTime,
+          endTime: z.endTime,
+          warningMessage: z.warningMessage || z.description,
+          type: z.type
+        }));
+        zonesRef.current = apiZones;
+        await saveRedZones(apiZones);
+        console.log(`[SafetyMonitor] Loaded ${apiZones.length} zones from server`);
       }
     } catch (e) {
-      console.log('Zone Fetch Error:', e);
+      console.log('[SafetyMonitor] Zone Fetch Error:', e.message || e);
+    }
+  };
+
+  const checkLocationAgainstZones = async (latitude, longitude) => {
+    const zones = zonesRef.current;
+    let activeZoneFound = null;
+
+    for (const zone of zones) {
+      const radius = zone.radius || 500;
+      const dist = getDistance(latitude, longitude, zone.latitude, zone.longitude);
+
+      if (dist <= radius + 100) {
+        activeZoneFound = zone;
+
+        if (!warnedZones.current.has(zone.id)) {
+          warnedZones.current.add(zone.id);
+
+          const msg = getVoiceMessage(zone);
+
+          Speech.stop();
+          Speech.speak(msg, { language: 'en-US', rate: 0.9, pitch: 1.0 });
+
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title: `SAFETY ALERT: ${zone.name}`,
+              body: msg,
+              data: { zoneId: zone.id },
+              sound: true,
+            },
+            trigger: null,
+          });
+
+          setTimeout(() => {
+            warnedZones.current.delete(zone.id);
+          }, 600000);
+        }
+        break;
+      }
+    }
+
+    setCurrentZone(activeZoneFound);
+
+    if (guardianTimer) {
+      const currentZoneId = activeZoneFound ? (activeZoneFound.id || activeZoneFound.zoneId) : null;
+      const prevZoneId = lastZoneId.current;
+
+      if (currentZoneId && !prevZoneId) {
+        guardianTimer.startSession(activeZoneFound, latitude, longitude);
+      } else if (!currentZoneId && prevZoneId) {
+        guardianTimer.completeSession();
+      }
+
+      lastZoneId.current = currentZoneId;
     }
   };
 
   useEffect(() => {
     fetchZones();
-    const interval = setInterval(fetchZones, 300000); // Refresh zones every 5 mins
+    const interval = setInterval(fetchZones, 300000);
     return () => clearInterval(interval);
   }, []);
 
@@ -109,7 +172,10 @@ export function useSafetyMonitor() {
     const startMonitoring = async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') return;
+        if (status !== 'granted') {
+          console.log('[SafetyMonitor] Location permission denied');
+          return;
+        }
 
         locationWatcher.current = await Location.watchPositionAsync(
           {
@@ -120,72 +186,25 @@ export function useSafetyMonitor() {
           async (location) => {
             if (!active) return;
             const { latitude, longitude } = location.coords;
-            let activeZoneFound = null;
-
-            for (const zone of allZones) {
-              // 1. Time Check
-              if (!isTimeInRange(zone.startTime, zone.endTime)) continue;
-
-              // 2. Distance Check
-              const radius = zone.radius || 100;
-              const dist = getDistance(latitude, longitude, zone.latitude, zone.longitude);
-
-              if (dist <= radius + 20) {
-                activeZoneFound = zone;
-
-                // 3. One-time Voice & Push Alert per entry
-                if (!warnedZones.current.has(zone.id)) {
-                  warnedZones.current.add(zone.id);
-
-                  const msg = getVoiceMessage(zone);
-
-                  // AI VOICE ALERT
-                  Speech.stop();
-                  Speech.speak(msg, {
-                    language: 'en-US',
-                    rate: 0.9,
-                    pitch: 1.0
-                  });
-
-                  // AI SYSTEM NOTIFICATION
-                  await Notifications.scheduleNotificationAsync({
-                    content: {
-                      title: `⚠️ AI SAFETY ALERT: ${zone.name}`,
-                      body: msg,
-                      data: { zoneId: zone.id },
-                      sound: true,
-                    },
-                    trigger: null, // Send immediately
-                  });
-
-                  // Reset warning flag after 10 minutes to allow re-alert
-                  setTimeout(() => {
-                    warnedZones.current.delete(zone.id);
-                  }, 600000);
-                }
-                break;
-              }
-            }
-
-            setCurrentZone(activeZoneFound);
+            await checkLocationAgainstZones(latitude, longitude);
           }
         );
+        console.log('[SafetyMonitor] Location watcher started');
       } catch (err) {
-        console.warn('Error in safety monitor:', err);
+        console.warn('[SafetyMonitor] Error starting monitor:', err);
       }
     };
 
-    if (allZones.length > 0) {
-      startMonitoring();
-    }
+    startMonitoring();
 
     return () => {
       active = false;
       if (locationWatcher.current) {
         locationWatcher.current.remove();
+        locationWatcher.current = null;
       }
     };
-  }, [allZones]);
+  }, []);
 
   return { currentZone };
 }
