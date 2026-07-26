@@ -138,7 +138,15 @@ export function useVolumeSOS(navigation, userData) {
       return;
     }
 
+    let lastEventTime = 0;
+
     const subscription = DeviceEventEmitter.addListener('onVolumePress', () => {
+      const now = Date.now();
+      if (now - lastEventTime < 3000) {
+        console.log('SOS: Volume event ignored (cooldown)');
+        return;
+      }
+      lastEventTime = now;
       console.log('SOS: Volume press event received (3 clicks completed in native)');
       startMicListening();
     });
