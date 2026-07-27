@@ -53,6 +53,11 @@ export default function SOSTrackingScreen({ route, navigation }) {
     if (cameraRef.current && isRecording) {
       cameraRef.current.stopRecording();
     }
+    if (audioRecording.current) {
+      audioRecording.current.stopAndUnloadAsync().catch(() => {});
+      audioRecording.current = null;
+    }
+    Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
   };
 
   // Continuous Video Recording Loop
@@ -107,6 +112,8 @@ export default function SOSTrackingScreen({ route, navigation }) {
   };
 
   // Continuous Audio Recording Loop
+  const audioRecording = useRef(null);
+
   const startContinuousAudio = async () => {
     if (!isTracking.current) return;
 
@@ -121,12 +128,15 @@ export default function SOSTrackingScreen({ route, navigation }) {
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       );
 
+      audioRecording.current = recording;
+
       // Record for 30 seconds
       await new Promise(resolve => setTimeout(resolve, 30000));
 
-      if (recording) {
-        await recording.stopAndUnloadAsync();
-        const uri = recording.getURI();
+      if (audioRecording.current) {
+        await audioRecording.current.stopAndUnloadAsync();
+        const uri = audioRecording.current.getURI();
+        audioRecording.current = null;
         console.log('[SOS] Audio clip finished:', uri);
         if (uri) {
           await queueMedia(alertId, uri, 'AUDIO');
@@ -134,11 +144,17 @@ export default function SOSTrackingScreen({ route, navigation }) {
         }
       }
 
+      // Release audio session before next recording
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      await new Promise(r => setTimeout(r, 1000));
+
       if (isTracking.current) {
         startContinuousAudio();
       }
     } catch (err) {
       console.error('[SOS] Audio recording error:', err.message);
+      audioRecording.current = null;
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
       if (isTracking.current) {
         setTimeout(startContinuousAudio, 5000);
       }
