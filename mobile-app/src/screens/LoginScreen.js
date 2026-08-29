@@ -31,7 +31,7 @@ export default function LoginScreen({ navigation }) {
       if (error.response) {
         msg = error.response.data.message || msg;
       } else if (error.request) {
-        msg = 'Network Error: Cannot connect to server. Ensure phone and laptop are on same Wi-Fi (IP: 192.168.1.103)';
+        msg = 'Network Error: Cannot connect to server. Ensure phone and laptop are on same Wi-Fi (IP: 192.168.1.104)';
       } else {
         msg = error.message;
       }
