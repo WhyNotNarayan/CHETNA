@@ -1,11 +1,11 @@
 const prisma = require('../lib/prisma');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const { getJwtSecret } = require('../middleware/auth');
 
 
 exports.register = async (req, res) => {
   console.log('--- REGISTRATION ATTEMPT START ---');
-  console.log('Body:', req.body);
   try {
     const { phone, email, password, fullName, address, gender, guardian } = req.body;
     
@@ -66,7 +66,7 @@ exports.register = async (req, res) => {
     });
     console.log('User created successfully:', user.id);
 
-    const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET || 'supersecret', {
+    const token = jwt.sign({ id: user.id, role: user.role }, getJwtSecret(), {
       expiresIn: '30d'
     });
 
@@ -88,7 +88,7 @@ exports.login = async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ success: false, message: 'Invalid password. Please try again.' });
 
-    const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET || 'supersecret', { expiresIn: '30d' });
+    const token = jwt.sign({ id: user.id, role: user.role }, getJwtSecret(), { expiresIn: '30d' });
     const { password: _, ...userWithoutPassword } = user;
     res.json({ success: true, token, user: userWithoutPassword });
   } catch (error) {
@@ -100,8 +100,8 @@ exports.login = async (req, res) => {
 exports.adminLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (email?.trim() === 'aaditaygawade@gmail.com' && password === 'adi^%2006') {
-      const token = jwt.sign({ id: 'ADMIN_001', role: 'ADMIN' }, process.env.JWT_SECRET || 'supersecret', { expiresIn: '30d' });
+    if (email?.trim() === process.env.ADMIN_EMAIL && password === process.env.ADMIN_PASSWORD) {
+      const token = jwt.sign({ id: 'ADMIN_001', role: 'ADMIN' }, getJwtSecret(), { expiresIn: '30d' });
       return res.json({ success: true, token, user: { fullName: 'Narayan Gawade (Admin)', email: 'aaditaygawade@gmail.com', role: 'ADMIN' } });
     }
     res.status(401).json({ success: false, message: 'Invalid Admin Credentials' });
@@ -273,16 +273,23 @@ exports.respondLinkRequest = async (req, res) => {
   try {
     const { requestId, action } = req.body; // action: 'APPROVED' or 'REJECTED'
 
-    if (!requestId || !action) {
-      return res.status(400).json({ success: false, message: 'Request ID and action are required.' });
+    if (!requestId || !['APPROVED', 'REJECTED'].includes(action)) {
+      return res.status(400).json({ success: false, message: 'Valid request ID and action (APPROVED/REJECTED) are required.' });
     }
 
-    const contact = await prisma.emergencyContact.update({
+    // Ownership check: only the parent whose phone is on the request may respond
+    const contact = await prisma.emergencyContact.findUnique({ where: { id: requestId } });
+    if (!contact) return res.status(404).json({ success: false, message: 'Request not found.' });
+    if (contact.phone !== req.user.phone) {
+      return res.status(403).json({ success: false, message: 'This link request is not addressed to you.' });
+    }
+
+    const updated = await prisma.emergencyContact.update({
       where: { id: requestId },
       data: { status: action }
     });
 
-    res.json({ success: true, message: `Request ${action.toLowerCase()} successfully.`, contact });
+    res.json({ success: true, message: `Request ${action.toLowerCase()} successfully.`, contact: updated });
   } catch (error) {
     console.error('respondLinkRequest Error:', error);
     res.status(500).json({ success: false, message: 'Failed to respond to link request.' });

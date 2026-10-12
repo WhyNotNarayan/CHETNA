@@ -50,14 +50,15 @@ router.get('/red-zones', async (req, res) => {
   }
 });
 
-// Submit a danger road / unsafe area suggestion
-router.post('/suggest-hazard', async (req, res) => {
+// Submit a danger road / unsafe area suggestion (userId comes from the token)
+router.post('/suggest-hazard', protect, async (req, res) => {
   try {
     const { 
-      userId, name, latitude, longitude, 
+      name, latitude, longitude, 
       destLatitude, destLongitude, pathData, 
       startTime, endTime, type, description, caseCount 
     } = req.body;
+    const userId = req.user.id;
 
     const suggestion = await prisma.hazardSuggestion.create({
       data: {

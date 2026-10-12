@@ -99,6 +99,19 @@ exports.getPendingSecretCops = async (req, res) => {
         role: 'BOY',
         isVerified: false,
         isSecretCopPending: true
+      },
+      // Never expose password hashes / push tokens to the client
+      select: {
+        id: true,
+        fullName: true,
+        phone: true,
+        email: true,
+        profession: true,
+        workAddress: true,
+        address: true,
+        isVerified: true,
+        isSecretCopPending: true,
+        createdAt: true
       }
     });
     res.json({ success: true, users });

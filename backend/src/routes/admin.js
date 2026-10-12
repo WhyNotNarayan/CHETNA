@@ -2,20 +2,25 @@ const express = require('express');
 const router = express.Router();
 const adminController = require('../controllers/adminController');
 
-// All routes here should theoretically be protected by an isAdmin middleware
-// For now, we are building the functionality
+const { protect, isAdmin } = require('../middleware/auth');
 
-router.post('/red-zones', adminController.addRedZone);
-router.get('/red-zones', adminController.getRedZones);
-router.delete('/red-zones/:id', adminController.deleteRedZone);
-router.get('/analytics', adminController.getAnalytics);
-router.get('/pending-secret-cops', adminController.getPendingSecretCops);
-router.get('/verified-secret-cops', adminController.getVerifiedSecretCops);
-router.get('/leaderboard', adminController.getLeaderboard);
-router.post('/verify-secret-cop', adminController.verifySecretCop);
+// Red zones: read is needed by girls'/boys' AI Navigator; write is admin console
+// (also reachable from the Secret Cop map screen — requires a logged-in user).
+router.get('/red-zones', protect, adminController.getRedZones);
+router.post('/red-zones', protect, adminController.addRedZone);
+router.delete('/red-zones/:id', protect, adminController.deleteRedZone);
+
+// Used by Secret Cop dashboard (leaderboard / radar)
+router.get('/leaderboard', protect, adminController.getLeaderboard);
+router.get('/verified-secret-cops', protect, adminController.getVerifiedSecretCops);
+
+// Strictly admin console — require ADMIN role
+router.get('/analytics', protect, isAdmin, adminController.getAnalytics);
+router.get('/pending-secret-cops', protect, isAdmin, adminController.getPendingSecretCops);
+router.post('/verify-secret-cop', protect, isAdmin, adminController.verifySecretCop);
 
 // Intel/Danger Road Reporting Management
-router.get('/intel-requests', adminController.getIntelRequests);
-router.post('/verify-intel', adminController.verifyIntel);
+router.get('/intel-requests', protect, isAdmin, adminController.getIntelRequests);
+router.post('/verify-intel', protect, isAdmin, adminController.verifyIntel);
 
 module.exports = router;

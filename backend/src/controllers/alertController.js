@@ -62,14 +62,20 @@ exports.triggerSOS = async (req, res) => {
     }
 
     // 3. Find all verified Secret Cops with a known last location
+    //    (never return password hashes / push tokens to the client)
     const secretCops = await prisma.user.findMany({
       where: {
         role: 'SECRET_COP',
         isVerified: true,
         lastLocation: { isNot: null }
       },
-      include: {
-        lastLocation: true
+      select: {
+        id: true,
+        fullName: true,
+        profession: true,
+        latitude: true,
+        longitude: true,
+        lastLocation: { select: { latitude: true, longitude: true } }
       }
     });
 
@@ -146,7 +152,14 @@ exports.resolveSOS = async (req, res) => {
       return res.status(401).json({ success: false, message: 'Incorrect password. Cancellation denied.' });
     }
 
-    // 2. Mark Alert as Resolved
+    // 2. Only the alert owner may resolve it
+    const alert = await prisma.alert.findUnique({ where: { id: alertId }, select: { userId: true } });
+    if (!alert) return res.status(404).json({ success: false, message: 'Alert not found' });
+    if (alert.userId !== userId) {
+      return res.status(403).json({ success: false, message: 'You can only cancel your own SOS.' });
+    }
+
+    // 3. Mark Alert as Resolved
     await prisma.alert.update({
       where: { id: alertId },
       data: { status: 'RESOLVED' }
@@ -227,7 +240,13 @@ exports.getNearbyAlerts = async (req, res) => {
 
 exports.respondToSOS = async (req, res) => {
   try {
-    const { alertId, helperId, status } = req.body; // status: 'ACCEPTED', 'REJECTED', 'COMPLETED'
+    const { alertId, status } = req.body; // status: 'ACCEPTED', 'REJECTED', 'COMPLETED'
+    // helperId ALWAYS comes from the verified JWT — never trust the client
+    const helperId = req.user.id;
+
+    if (!['ACCEPTED', 'REJECTED', 'COMPLETED'].includes(status)) {
+      return res.status(400).json({ success: false, error: 'Invalid status value' });
+    }
 
     let response = await prisma.safetyResponse.findFirst({
       where: { alertId, helperId }
@@ -266,7 +285,7 @@ exports.respondToSOS = async (req, res) => {
   }
 };
 
-// Add tracking location coords
+// Add tracking location coords (only the alert owner may write)
 exports.trackSOS = async (req, res) => {
   try {
     const { id } = req.params;
@@ -274,6 +293,12 @@ exports.trackSOS = async (req, res) => {
 
     if (!latitude || !longitude) {
       return res.status(400).json({ success: false, message: 'Latitude and Longitude are required' });
+    }
+
+    const alert = await prisma.alert.findUnique({ where: { id }, select: { userId: true } });
+    if (!alert) return res.status(404).json({ success: false, message: 'Alert not found' });
+    if (alert.userId !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Not your alert' });
     }
 
     const tracking = await prisma.alertTracking.create({
@@ -291,17 +316,31 @@ exports.trackSOS = async (req, res) => {
   }
 };
 
+// Shared validation for evidence uploads: UUID alertId, whitelisted type, alert exists
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_EVIDENCE_BYTES = 50 * 1024 * 1024; // 50MB per file
+
+const validateEvidenceUpload = async (alertId, fileType) => {
+  if (!UUID_RE.test(String(alertId || ''))) return 'Invalid alert id';
+  if (!['AUDIO', 'VIDEO'].includes(fileType)) return 'fileType must be AUDIO or VIDEO';
+  const alert = await prisma.alert.findUnique({ where: { id: alertId }, select: { id: true } });
+  if (!alert) return 'Alert not found';
+  return null;
+};
+
 // Upload media evidence (Binary stream for large files)
 exports.uploadEvidenceBinary = async (req, res) => {
   const alertId = req.params.id;
-  const fileType = req.headers['x-file-type']; // "AUDIO" or "VIDEO"
+  const fileType = String(req.headers['x-file-type'] || '').toUpperCase(); // "AUDIO" or "VIDEO"
 
-  if (!fileType) {
-    return res.status(400).json({ success: false, message: 'X-File-Type header is required' });
+  const invalid = await validateEvidenceUpload(alertId, fileType).catch(() => 'Validation failed');
+  if (invalid) {
+    return res.status(400).json({ success: false, message: invalid });
   }
 
   const fs = require('fs');
   const path = require('path');
+  const crypto = require('crypto');
 
   const uploadDir = path.join(__dirname, '../../uploads');
   if (!fs.existsSync(uploadDir)) {
@@ -309,13 +348,27 @@ exports.uploadEvidenceBinary = async (req, res) => {
   }
 
   const ext = fileType === 'VIDEO' ? 'mp4' : 'm4a';
-  const fileName = `evidence_${alertId}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+  // Server-generated unguessable filename (no user input in the path)
+  const fileName = `evidence_${alertId}_${Date.now()}_${crypto.randomBytes(8).toString('hex')}.${ext}`;
   const filePath = path.join(uploadDir, fileName);
 
   const writeStream = fs.createWriteStream(filePath);
   let responded = false;
+  let receivedBytes = 0;
 
   console.log(`[EvidenceUpload] Receiving ${fileType} for alert ${alertId}...`);
+
+  // Enforce size limit while streaming
+  req.on('data', (chunk) => {
+    receivedBytes += chunk.length;
+    if (receivedBytes > MAX_EVIDENCE_BYTES && !responded) {
+      responded = true;
+      req.destroy();
+      writeStream.destroy();
+      try { fs.unlinkSync(filePath); } catch (e) {}
+      return res.status(413).json({ success: false, error: 'File too large (max 50MB)' });
+    }
+  });
 
   req.pipe(writeStream);
 
@@ -439,12 +492,21 @@ exports.uploadEvidence = async (req, res) => {
     const { id } = req.params;
     const { fileData, fileType } = req.body; // fileData = base64 data, fileType = "AUDIO" or "VIDEO"
 
-    if (!fileData || !fileType) {
-      return res.status(400).json({ success: false, message: 'FileData and FileType are required' });
+    const invalid = await validateEvidenceUpload(id, String(fileType || '').toUpperCase());
+    if (invalid) {
+      return res.status(400).json({ success: false, message: invalid });
+    }
+    if (!fileData || typeof fileData !== 'string') {
+      return res.status(400).json({ success: false, message: 'FileData is required' });
+    }
+    // base64 of a 50MB file is ~67MB of text — cap before decoding
+    if (fileData.length > MAX_EVIDENCE_BYTES * 1.4) {
+      return res.status(413).json({ success: false, message: 'File too large (max 50MB)' });
     }
 
     const fs = require('fs');
     const path = require('path');
+    const crypto = require('crypto');
 
     const uploadDir = path.join(__dirname, '../../uploads');
     if (!fs.existsSync(uploadDir)) {
@@ -453,7 +515,7 @@ exports.uploadEvidence = async (req, res) => {
 
     const buffer = Buffer.from(fileData, 'base64');
     const ext = fileType === 'VIDEO' ? 'mp4' : 'm4a';
-    const fileName = `evidence_${id}_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+    const fileName = `evidence_${id}_${Date.now()}_${crypto.randomBytes(8).toString('hex')}.${ext}`;
     const filePath = path.join(uploadDir, fileName);
 
     fs.writeFileSync(filePath, buffer);

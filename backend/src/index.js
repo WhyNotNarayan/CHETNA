@@ -6,7 +6,16 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+// CORS: allow the mobile app (no Origin header) + local dev tools.
+// Restrictive list blocks browser-based cross-site abuse while keeping the app working.
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || /^(http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+))(:\d+)?$/.test(origin)) {
+      return callback(null, true);
+    }
+    callback(null, false);
+  }
+}));
 
 // Apply JSON body parser only to NON-binary routes.
 // Binary upload route uses req.pipe() — express.json() must NOT consume its stream.
@@ -14,7 +23,8 @@ app.use((req, res, next) => {
   if (req.path.includes('/upload-evidence-binary')) {
     return next(); // Skip JSON parsing for raw binary uploads
   }
-  express.json({ limit: '50mb' })(req, res, next);
+  // 10mb is plenty for JSON APIs (evidence uploads go through the binary route)
+  express.json({ limit: '10mb' })(req, res, next);
 });
 
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));

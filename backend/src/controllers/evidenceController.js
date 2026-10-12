@@ -429,31 +429,18 @@ function getDashboardPage(token) {
   `;
 }
 
-exports.getLatestEvidenceToken = async (req, res) => {
-  try {
-    const alert = await prisma.alert.findFirst({
-      where: { evidenceToken: { not: null } },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, evidenceToken: true, createdAt: true, status: true }
-    });
-
-    if (!alert) {
-      return res.status(404).json({ success: false, message: 'No alerts with evidence tokens found.' });
-    }
-
-    res.json({ success: true, alert });
-  } catch (error) {
-    console.error('Get Latest Token Error:', error);
-    res.status(500).json({ error: error.message });
-  }
-};
-
 exports.inspectFile = async (req, res) => {
   try {
-    const { filename } = req.params;
+    // Basename only — blocks `../` path traversal (was: raw path.join with user input)
+    const filename = require('path').basename(String(req.params.filename || ''));
     const fs = require('fs');
     const path = require('path');
-    const filePath = path.join(__dirname, '../../uploads', filename);
+    const uploadRoot = path.resolve(__dirname, '../../uploads');
+    const filePath = path.resolve(path.join(uploadRoot, filename));
+
+    if (!filePath.startsWith(uploadRoot + path.sep)) {
+      return res.status(400).json({ error: 'Invalid filename' });
+    }
 
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: 'File not found' });
