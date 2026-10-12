@@ -5,3 +5,4 @@ node_modules
 /generated/prisma
 *.db
 *.db-journal
+uploads/
