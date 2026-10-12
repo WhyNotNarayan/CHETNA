@@ -51,6 +51,6 @@ app.use('/api/guardian', guardianRoutes);
 const { startGuardianCron } = require('./services/guardianCron');
 startGuardianCron();
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 CHETNA Backend running on http://localhost:${PORT}`);
 });
