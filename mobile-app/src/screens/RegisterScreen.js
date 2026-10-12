@@ -118,8 +118,8 @@ export default function RegisterScreen({ navigation }) {
       } else if (error.request) {
         errorTitle = 'Network Connection Error';
         errorMsg = `Cannot connect to your laptop.
-1. Check if Laptop and Phone are on SAME Wi-Fi.
-2. Check if IP in api.js is correct: 192.168.1.103
+1. Check if Laptop and Phone are on SAME network.
+2. Check EXPO_PUBLIC_API_URL in mobile-app/.env matches your laptop IP.
 3. Ensure Backend is running.`;
       } else {
         errorMsg = error.message;

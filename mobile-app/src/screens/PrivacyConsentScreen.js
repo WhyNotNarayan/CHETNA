@@ -59,9 +59,9 @@ const PrivacyConsentScreen = ({ navigation }) => {
           </View>
           
           <View style={styles.headerContent}>
-            <Text style={styles.helloText}>Hello 👋</Text>
+            <Text style={styles.helloText}>{lang === 'mr' ? 'नमस्कार 👋' : lang === 'hi' ? 'नमस्ते 👋' : 'Hello 👋'}</Text>
             <Text style={styles.headerDesc}>
-              Before you create an account, please read and accept our Terms & Conditions
+              {lang === 'mr' ? 'खाते तयार करण्यापूर्वी, कृपया आमच्यी अटी व शर्ती वाचून स्वीकारा' : lang === 'hi' ? 'खाता बनाने से पहले, कृपया हमारी नियम और शर्तें पढ़कर स्वीकार करें' : 'Before you create an account, please read and accept our Terms & Conditions'}
             </Text>
           </View>
         </SafeAreaView>
@@ -78,69 +78,69 @@ const PrivacyConsentScreen = ({ navigation }) => {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={[styles.title, { color: theme.text }]}>Terms & Conditions</Text>
+          <Text style={[styles.title, { color: theme.text }]}>{lang === 'mr' ? 'अटी व शर्ती' : lang === 'hi' ? 'नियम और शर्तें' : 'Terms & Conditions'}</Text>
           
           <View style={styles.metaRow}>
             <Clock size={14} color={theme.subtext} />
             <Text style={[styles.lastUpdated, { color: theme.subtext }]}>
-              Last updated: 30 April 2026
+              {lang === 'mr' ? 'शेवटचे अपडेट: 30 एप्रिल 2026' : lang === 'hi' ? 'अंतिम अपडेट: 30 अप्रैल 2026' : 'Last updated: 30 April 2026'}
             </Text>
           </View>
 
           <Text style={[styles.introText, { color: theme.text }]}>
-            Please read these terms and conditions ("terms and conditions", "terms") carefully before using Chetna mobile application ("app", "service") operated by CHETNA ("us", 'we', "our").
+            {lang === 'mr' ? 'कृपया ही अटी व शर्ती ("अटी", "शर्ती") CHETNA ("आम्ही", "आमचे") द्वारे चालवल्याजाणार्‍या Chetna मोबाइल अ‍ॅप्लिकेशन ("अ‍ॅप", "सेवा") वापरण्यापूर्वी काळजीपूर्वक वाचा.' : lang === 'hi' ? 'कृपया इन नियमों और शर्तों ("नियम", "शर्तें") को CHETNA ("हम", "हमारे") द्वारा संचालित Chetna मोबाइल एप्लिकेशन ("ऐप", "सेवा") का उपयोग करने से पहले ध्यानपूर्वक पढ़ें।' : 'Please read these terms and conditions ("terms and conditions", "terms") carefully before using Chetna mobile application ("app", "service") operated by CHETNA ("us", \'we\', "our").'}
           </Text>
 
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>1. Conditions of use</Text>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>{lang === 'mr' ? '1. वापराच्या अटी' : lang === 'hi' ? '1. उपयोग की शर्तें' : '1. Conditions of use'}</Text>
             <Text style={[styles.sectionBody, { color: theme.subtext }]}>
-              By using this app, you certify that you have read and reviewed this Agreement and that you agree to comply with its terms. If you do not want to be bound by the terms of this Agreement, you are advised to stop using the app accordingly. CHETNA only grants use and access of this app, its products, and its services to those who have accepted its terms.
+              {lang === 'mr' ? 'हे अ‍ॅप वापरून तुम्ही हा करार वाचला आणि पुनरावलोकन केल्याची खात्री देता आणि त्याच्या अटींचे पालन करण्यास संमत आहात असे प्रमाणित करता. या कराराच्या अटींनी बंधनकारक होण्यास तुम्हाला आवडत नसल्यास, त्यानुसार अ‍ॅप वापरणे बंद करण्याचा सल्ला दिला जातो. CHETNA केवळ त्यांच्या अटी स्वीकारणाऱ्यांनाच अ‍ॅप, त्याचे उत्पादने आणि सेवा वापरण्याचा आणि प्रवेश मिळवण्याचा परवाना देते.' : lang === 'hi' ? 'इस ऐप का उपयोग करके, आप प्रमाणित करते हैं कि आपने इस समझौते को पढ़ा और समीक्षा की है और आप इसकी शर्तों का पालन करने के लिए सहमत हैं। यदि आप इस समझौते की शर्तों से बंधे नहीं होना चाहते हैं, तो आपको ऐप का उपयोग बंद करने की सलाह दी जाती है। CHETNA केवल उन्हीं को ऐप, इसके उत्पादों और सेवाओं का उपयोग और पहुंच प्रदान करता है जिन्होंने इसकी शर्तें स्वीकार की हैं।' : 'By using this app, you certify that you have read and reviewed this Agreement and that you agree to comply with its terms. If you do not want to be bound by the terms of this Agreement, you are advised to stop using the app accordingly. CHETNA only grants use and access of this app, its products, and its services to those who have accepted its terms.'}
             </Text>
           </View>
 
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>2. Privacy policy</Text>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>{lang === 'mr' ? '2. गोपनीयता धोरण' : lang === 'hi' ? '2. गोपनीयता नीति' : '2. Privacy policy'}</Text>
             <Text style={[styles.sectionBody, { color: theme.subtext }]}>
-              Before you continue using our app, we advise you to read our privacy policy regarding our user data collection. It will help you better understand our practices. We use your location and microphone strictly for emergency SOS triggers.
+              {lang === 'mr' ? 'आमचे अ‍ॅप वापरणे सुरू ठेवण्यापूर्वी, आमच्या वापरकर्ता डेटा संकलनाबद्दल आमचे गोपनीयता धोरण वाचण्याचा आम्ही आपल्याला सल्ला देतो. ते आमच्या पद्धती अधिक चांगले समजण्यास मदत करेल. आम्ही तुमचे स्थान आणि माइक्रोफोन केवळ आपत्कालीन SOS ट्रिगरसाठी कडकपणे वापरतो.' : lang === 'hi' ? 'हमारे ऐप का उपयोग जारी रखने से पहले, हम आपको हमारे उपयोगकर्ता डेटा संग्रह के संबंध में हमारी गोपनीयता नीति पढ़ने की सलाह देते हैं। यह आपको हमारी प्रथाओं को बेहतर ढंग से समझने में मदद करेगा। हम आपके स्थान और माइक्रोफ़ोन का उपयोग केवल आपातकालीन SOS ट्रिगर के लिए सख्ती से करते हैं।' : 'Before you continue using our app, we advise you to read our privacy policy regarding our user data collection. It will help you better understand our practices. We use your location and microphone strictly for emergency SOS triggers.'}
             </Text>
           </View>
 
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>3. Intellectual property</Text>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>{lang === 'mr' ? '3. बौद्धिक संपत्ती' : lang === 'hi' ? '3. बौद्धिक संपत्ति' : '3. Intellectual property'}</Text>
             <Text style={[styles.sectionBody, { color: theme.subtext }]}>
-              You agree that all materials, products, and services provided on this app are the property of CHETNA, its affiliates, directors, officers, employees, agents, suppliers, or licensors including all copyrights, trade secrets, trademarks, patents, and other intellectual property.
+              {lang === 'mr' ? 'या अ‍ॅपवर प्रदान केलेल्या सर्व साहित्य, उत्पादने आणि सेवा CHETNA, त्याचे संबंधित, संचालक, अधिकारी, कर्मचारी, एजंट, पुरवठादार किंवा परवानाधारकांची मालकीचे आहेत याचे तुम्ही संमत आहात, ज्यामध्ये सर्व प्रतिलिपी अधिकार, व्यापार गोष्टी, व्यापार चिन्हे, पेटंट आणि इतर बौद्धिक संपत्ती समाविष्ट आहे.' : lang === 'hi' ? 'आप सहमत हैं कि इस ऐप पर प्रदान की गई सभी सामग्री, उत्पादों और सेवाएँ CHETNA, इसके सहयोगी, निदेशक, अधिकारियों, कर्मचारियों, एजेंटों, आपूर्तिकर्ताओं या लाइसेंसधारकों की संपत्ति हैं, जिसमें सभी कॉपीराइट, ट्रेड सीक्रेट्स, ट्रेडमार्क, पेटेंट और अन्य बौद्धिक संपत्ति शामिल हैं।' : 'You agree that all materials, products, and services provided on this app are the property of CHETNA, its affiliates, directors, officers, employees, agents, suppliers, or licensors including all copyrights, trade secrets, trademarks, patents, and other intellectual property.'}
             </Text>
           </View>
           
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>4. User Responsibility</Text>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>{lang === 'mr' ? '4. वापरकर्त्याची जबाबदारी' : lang === 'hi' ? '4. उपयोगकर्ता की जिम्मेदारी' : '4. User Responsibility'}</Text>
             <Text style={[styles.sectionBody, { color: theme.subtext }]}>
-              As a user of this app, you may be asked to register with us and provide private information. You are responsible for ensuring the accuracy of this information, and you are responsible for maintaining the safety and security of your identifying information.
+              {lang === 'mr' ? 'या अ‍ॅपच्या वापरकर्ता म्हणून, तुम्हाला आमच्यासोबत नोंदणी करण्यास आणि खाजगी माहिती देण्यास सांगू शकले जाते. या माहितीची अचूकता सुनिश्चित करण्याची जबाबदारी तुमची आहे, आणि तुमच्या ओळख माहितीच्या सुरक्षितता आणि सुरक्षितता राखण्याची जबाबदारी तुमची आहे.' : lang === 'hi' ? 'इस ऐप के उपयोगकर्ता के रूप में, आपसे हमारे साथ पंजीकरण करने और निजी जानकारी प्रदान करने के लिए कहा जा सकता है। इस जानकारी की सटीकता सुनिश्चित करने की जिम्मेदारी आपकी है, और अपनी पहचान जानकारी की सुरक्षा बनाए रखने की जिम्मेदारी आपकी है।' : 'As a user of this app, you may be asked to register with us and provide private information. You are responsible for ensuring the accuracy of this information, and you are responsible for maintaining the safety and security of your identifying information.'}
             </Text>
           </View>
 
           {/* Permissions Summary Section */}
           <View style={[styles.permCard, { backgroundColor: themeMode === 'dark' ? '#1a1a1a' : '#FFF5F8' }]}>
-            <Text style={[styles.permHeader, { color: theme.text }]}>Safety Permissions Required</Text>
+            <Text style={[styles.permHeader, { color: theme.text }]}>{lang === 'mr' ? 'आवश्यक सुरक्षा परवाने' : lang === 'hi' ? 'आवश्यक सुरक्षा अनुमतियाँ' : 'Safety Permissions Required'}</Text>
             <View style={styles.permItem}>
               <MapPin size={18} color="#d63384" />
               <View style={styles.permTextContent}>
-                <Text style={[styles.permTitle, { color: theme.text }]}>Location Access</Text>
-                <Text style={styles.permDesc}>To detect red zones and track live SOS movement.</Text>
+                <Text style={[styles.permTitle, { color: theme.text }]}>{lang === 'mr' ? 'स्थान प्रवेश' : lang === 'hi' ? 'स्थान पहुंच' : 'Location Access'}</Text>
+                <Text style={styles.permDesc}>{lang === 'mr' ? 'रात्री झोन शोधण्यासाठी आणि जिवंत SOS हालचाल ट्रॅक करण्यासाठी.' : lang === 'hi' ? 'रेड ज़ोन का पता लगाने और लाइव SOS गतिविधि ट्रैक करने के लिए।' : 'To detect red zones and track live SOS movement.'}</Text>
               </View>
             </View>
             <View style={styles.permItem}>
               <Camera size={18} color="#d63384" />
               <View style={styles.permTextContent}>
-                <Text style={[styles.permTitle, { color: theme.text }]}>Camera Access</Text>
-                <Text style={styles.permDesc}>To record high-quality video evidence during SOS.</Text>
+                <Text style={[styles.permTitle, { color: theme.text }]}>{lang === 'mr' ? 'कॅमेरा प्रवेश' : lang === 'hi' ? 'कैमरा पहुंच' : 'Camera Access'}</Text>
+                <Text style={styles.permDesc}>{lang === 'mr' ? 'SOS दरम्यान उच्च दर्जाचा व्हिडिओ पुरावा रेकॉर्ड करण्यासाठी.' : lang === 'hi' ? 'SOS के दौरान उच्च गुणवत्ता वाला वीडियो सबूत रिकॉर्ड करने के लिए।' : 'To record high-quality video evidence during SOS.'}</Text>
               </View>
             </View>
             <View style={styles.permItem}>
               <Mic size={18} color="#d63384" />
               <View style={styles.permTextContent}>
-                <Text style={[styles.permTitle, { color: theme.text }]}>Microphone Access</Text>
-                <Text style={styles.permDesc}>To record audio and enable voice-activated SOS.</Text>
+                <Text style={[styles.permTitle, { color: theme.text }]}>{lang === 'mr' ? 'माइक्रोफोन प्रवेश' : lang === 'hi' ? 'माइक्रोफ़ोन पहुंच' : 'Microphone Access'}</Text>
+                <Text style={styles.permDesc}>{lang === 'mr' ? 'ध्वनी रेकॉर्ड करण्यासाठी आणि आवाज-सक्रिय SOS सक्षम करण्यासाठी.' : lang === 'hi' ? 'ऑडियो रिकॉर्ड करने और वॉइस-सक्रिय SOS सक्षम करने के लिए।' : 'To record audio and enable voice-activated SOS.'}</Text>
               </View>
             </View>
           </View>

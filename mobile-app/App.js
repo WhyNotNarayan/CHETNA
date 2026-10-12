@@ -19,7 +19,6 @@ import SecretCopRegisterScreen from './src/screens/SecretCopRegisterScreen';
 import GirlsDashboard from './src/screens/GirlsDashboard';
 import BoysDashboard from './src/screens/BoysDashboard';
 import AINavigatorScreen from './src/screens/AINavigatorScreen';
-import QRScannerScreen from './src/screens/QRScannerScreen';
 import SOSTrackingScreen from './src/screens/SOSTrackingScreen';
 import AdminLoginScreen from './src/screens/AdminLoginScreen';
 import AdminDashboard from './src/screens/AdminDashboard';
@@ -89,7 +88,6 @@ function AppNavigator({ navigationRef }) {
               <Stack.Screen name="GirlsDashboard" component={GirlsDashboard} />
               <Stack.Screen name="SOSTracking" component={SOSTrackingScreen} />
               <Stack.Screen name="AINavigator" component={AINavigatorScreen} />
-              <Stack.Screen name="QRScanner" component={QRScannerScreen} />
               <Stack.Screen name="ShakeAlert" component={ShakeAlertScreen} />
             </>
           ) : (
@@ -98,7 +96,6 @@ function AppNavigator({ navigationRef }) {
               <Stack.Screen name="BoysDashboard" component={BoysDashboard} />
               <Stack.Screen name="SecretCopRegister" component={SecretCopRegisterScreen} />
               <Stack.Screen name="AINavigator" component={AINavigatorScreen} />
-              <Stack.Screen name="QRScanner" component={QRScannerScreen} />
               <Stack.Screen name="AdminRedZones" component={AdminRedZoneScreen} />
             </>
           )}

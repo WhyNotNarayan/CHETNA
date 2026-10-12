@@ -9,16 +9,79 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { useSafetyMonitor } from '../hooks/useSafetyMonitor';
 import { useVolumeSOS } from '../hooks/useVolumeSOS';
 import { AuthContext } from '../context/AuthContext';
+import { LanguageContext } from '../context/LanguageContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '../utils/api';
 import { ensurePermission, PERMISSIONS } from '../utils/permissionHelper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const ZONE_TRANSLATE = {
+  en: {},
+  mr: {
+    'SAFE LOCATION': 'सुरक्षित स्थान',
+    'DANGER': 'धोका',
+    'Entering High Risk Area': 'उच्च जोखीम क्षेत्रात प्रवेश',
+    'No Street Lights, Isolated Area': 'रस्त्यावर लाईट नाही, एकटे भाग',
+    'No Street Lights': 'रस्त्यावर लाईट नाही',
+    'Isolated Area': 'एकटा भाग',
+    'Deep Water': 'खोल पाणी',
+    'Wild Animal Area': 'वन्य प्राण्यांचा भाग',
+    'High Crime Rate': 'उच्च गुन्हेगारी दर',
+    'Accident Prone': 'अपघात-प्रवण',
+    'Sharp Turn': 'तीव्र वळण',
+    'Deep Potholes': 'खोल खड्डे',
+    'The beach are alone at the night deu to that people are surrounding and also at the night time there are wild animals activities': 'रात्री समुद्रकिनारा रिकामा असतो कारण लोक आसपास असतात आणि रात्री वन्य प्राण्यांची हालचाल होते.',
+    'Danger Zone': 'धोक्याचा क्षेत्र',
+    'Entering': 'प्रवेश',
+    'HIGH RISK AREA': 'उच्च जोखीम क्षेत्र',
+    'RED ZONE': 'लाल क्षेत्र',
+    'CRIME AREA': 'गुन्हेगारी क्षेत्र',
+    'DARK AREA': 'गडद भाग',
+    'Isolated Beach': 'एकटा समुद्रकिनारा',
+    'ACCIDENT ZONE': 'अपघात क्षेत्र',
+    'ANIMAL ZONE': 'प्राण्यांचा क्षेत्र',
+    'WATER ZONE': 'पाण्याचा क्षेत्र',
+  },
+  hi: {
+    'SAFE LOCATION': 'सुरक्षित स्थान',
+    'DANGER': 'खतरा',
+    'Entering High Risk Area': 'उच्च जोखिम क्षेत्र में प्रवेश',
+    'No Street Lights, Isolated Area': 'सड़क पर लाइट नहीं, अकेला क्षेत्र',
+    'No Street Lights': 'सड़क पर लाइट नहीं',
+    'Isolated Area': 'अकेला क्षेत्र',
+    'Deep Water': 'गहरा पानी',
+    'Wild Animal Area': 'जंगली जानवरों का क्षेत्र',
+    'High Crime Rate': 'उच्च अपराध दर',
+    'Accident Prone': 'दुर्घटना-प्रवण',
+    'Sharp Turn': 'तेज़ मोड़',
+    'Deep Potholes': 'गहरे गड्ढे',
+    'The beach are alone at the night deu to that people are surrounding and also at the night time there are wild animals activities': 'रात में समुद्र तट खाली होता है क्योंकि लोग आसपास होते हैं और रात में जंगली जानवरों की गतिविधि होती है।',
+    'Danger Zone': 'खतरनाक क्षेत्र',
+    'Entering': 'प्रवेश',
+    'HIGH RISK AREA': 'उच्च जोखिम क्षेत्र',
+    'RED ZONE': 'लाल क्षेत्र',
+    'CRIME AREA': 'अपराध क्षेत्र',
+    'DARK AREA': 'अंधेरा क्षेत्र',
+    'Isolated Beach': 'अकेला समुद्र तट',
+    'ACCIDENT ZONE': 'दुर्घटना क्षेत्र',
+    'ANIMAL ZONE': 'जानवरों का क्षेत्र',
+    'WATER ZONE': 'पानी का क्षेत्र',
+  },
+};
+
+function tr(lang, text) {
+  if (!text) return text;
+  const dict = ZONE_TRANSLATE[lang];
+  if (!dict) return text;
+  return dict[text] || text;
+}
 
 export default function GirlsDashboard({ navigation }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const { currentZone } = useSafetyMonitor();
   const { logout, userData, setUserData } = useContext(AuthContext);
+  const { lang } = useContext(LanguageContext);
   const { isMicActive, voicePrompt } = useVolumeSOS(navigation, userData);
   const [news, setNews] = useState([]);
   const [isSOSLoading, setIsSOSLoading] = useState(false);
@@ -311,8 +374,8 @@ export default function GirlsDashboard({ navigation }) {
           <LinearGradient colors={['#EF4444', '#B91C1C']} style={styles.dangerGradient} start={{x:0, y:0}} end={{x:1, y:0}}>
             <AlertTriangle color="#FFF" size={20} />
             <View style={styles.dangerTextContent}>
-              <Text style={styles.dangerTitle}>{currentZone.name?.toUpperCase() || 'DANGER'}</Text>
-              <Text style={styles.dangerSubTitle}>{currentZone.warningMessage || 'Entering High Risk Area'}</Text>
+              <Text style={styles.dangerTitle}>{tr(lang, currentZone.name?.toUpperCase() || 'DANGER')}</Text>
+              <Text style={styles.dangerSubTitle}>{tr(lang, currentZone.warningMessage) || tr(lang, 'Entering High Risk Area')}</Text>
             </View>
           </LinearGradient>
         </TouchableOpacity>
@@ -324,18 +387,18 @@ export default function GirlsDashboard({ navigation }) {
           <LinearGradient colors={['#6200ee', '#791880']} style={styles.aiGradient} start={{x:0, y:0}} end={{x:1, y:1}}>
             <View style={styles.aiHeader}>
               <Zap color="#FFF" size={14} fill="#FFF" />
-              <Text style={styles.aiTitle}>AI SAFETY INSIGHT</Text>
+              <Text style={styles.aiTitle}>{lang === 'mr' ? 'AI सुरक्षा अंतर्दृष्टी' : lang === 'hi' ? 'AI सुरक्षा जानकारी' : 'AI SAFETY INSIGHT'}</Text>
             </View>
             <View style={styles.aiMeterRow}>
                <View style={styles.meterInfo}>
                   <Text style={styles.meterValue}>{currentZone ? '65%' : '98%'}</Text>
-                  <Text style={styles.meterLabel}>Area Safety Score</Text>
+                  <Text style={styles.meterLabel}>{lang === 'mr' ? 'क्षेत्र सुरक्षा गुण' : lang === 'hi' ? 'क्षेत्र सुरक्षा स्कोर' : 'Area Safety Score'}</Text>
                </View>
                <View style={styles.aiAdvice}>
                   <Text style={styles.adviceText}>
                     {currentZone
-                      ? "Risk detected. AI recommends staying in well-lit areas and keeping SOS ready."
-                      : "Environment looks safe. 5 verified rescuers are active within 2km of you."}
+                      ? (lang === 'mr' ? 'जोखीम आढळला. AI चे शिफारस: चांगल्या प्रकाशात राहा आणि SOS तयार ठेवा.' : lang === 'hi' ? 'जोखिम मिला। AI की सलाह: अच्छी रोशनी में रहें और SOS तैयार रखें।' : "Risk detected. AI recommends staying in well-lit areas and keeping SOS ready.")
+                      : (lang === 'mr' ? 'वातावरण सुरक्षित दिसत आहे. 2 किमी आत 5 प्रमाणित रक्षक सक्रिय आहेत.' : lang === 'hi' ? 'वातावरण सुरक्षित लग रहा है। 2 किमी के भीतर 5 सत्यापित रक्षक सक्रिय हैं।' : "Environment looks safe. 5 verified rescuers are active within 2km of you.")}
                   </Text>
                </View>
             </View>
@@ -345,8 +408,8 @@ export default function GirlsDashboard({ navigation }) {
         <View style={[styles.statusCard, currentZone ? styles.dangerCard : styles.safeCard]}>
           <Shield color={currentZone ? "#ff4d4d" : "#4CAF50"} size={Math.min(width * 0.08, 32)} />
           <View style={styles.statusTextContainer}>
-            <Text style={[styles.statusTitle, { fontSize: Math.min(width * 0.048, 18) }]}>{currentZone ? 'DANGER ZONE' : 'YOU ARE SAFE'}</Text>
-            <Text style={[styles.statusSubtitle, { fontSize: Math.min(width * 0.037, 14) }]} numberOfLines={1}>{currentZone ? `Entering ${currentZone.name}` : 'Scanning your surroundings...'}</Text>
+            <Text style={[styles.statusTitle, { fontSize: Math.min(width * 0.048, 18) }]}>{currentZone ? (lang === 'mr' ? 'धोक्याचा क्षेत्र' : lang === 'hi' ? 'खतरनाक क्षेत्र' : 'DANGER ZONE') : (lang === 'mr' ? 'तुम्ही सुरक्षित आहात' : lang === 'hi' ? 'आप सुरक्षित हैं' : 'YOU ARE SAFE')}</Text>
+            <Text style={[styles.statusSubtitle, { fontSize: Math.min(width * 0.037, 14) }]} numberOfLines={1}>{currentZone ? (lang === 'mr' ? `${currentZone.name} मध्ये प्रवेश` : lang === 'hi' ? `${currentZone.name} में प्रवेश` : `Entering ${currentZone.name}`) : (lang === 'mr' ? 'तुमच्या आजूबाजू तपासत आहे...' : lang === 'hi' ? 'आपके आसपास जाँच रही है...' : 'Scanning your surroundings...')}</Text>
           </View>
         </View>
 
@@ -358,7 +421,7 @@ export default function GirlsDashboard({ navigation }) {
               </View>
             </View>
           </TouchableOpacity>
-          <Text style={[styles.sosInstruction, { marginTop: 12, fontSize: Math.min(width * 0.035, 13) }]}>Tap once, or say "Help Me"</Text>
+          <Text style={[styles.sosInstruction, { marginTop: 12, fontSize: Math.min(width * 0.035, 13) }]}>{lang === 'mr' ? 'एकदा टॅप करा, किंवा "मदत" म्हणा' : lang === 'hi' ? 'एक बार टैप करें, या "मदद" कहें' : 'Tap once, or say "Help Me"'}</Text>
         </View>
 
         <View style={[styles.actionsGrid, { marginBottom: 30, gap: 12 }]}>

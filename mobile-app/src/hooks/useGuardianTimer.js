@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useContext } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { AuthContext } from '../context/AuthContext';
+import { LanguageContext } from '../context/LanguageContext';
 import api from '../utils/api';
 
 const WALKING_SPEED_MPM = 75; // 4.5 km/h = 75 meters per minute
@@ -21,9 +22,13 @@ function getDistance(lat1, lon1, lat2, lon2) {
 
 export function useGuardianTimer() {
   const { userData } = useContext(AuthContext);
+  const { lang } = useContext(LanguageContext);
   const [activeSession, setActiveSession] = useState(null);
   const [timeRemaining, setTimeRemaining] = useState(null);
   const timerRef = useRef(null);
+  const langRef = useRef(lang);
+
+  useEffect(() => { langRef.current = lang; }, [lang]);
 
   const calculateExpectedExitTime = useCallback((zone, userLat, userLng) => {
     const zoneLat = parseFloat(zone.latitude);
@@ -67,10 +72,14 @@ export function useGuardianTimer() {
         const remainingMs = expectedExitTime.getTime() - Date.now();
         const remainingMin = Math.ceil(remainingMs / 60000);
 
+        const ln = langRef.current;
+        const notifTitle = ln === 'mr' ? '⏰ गार्जियन टाइमर सुरू' : ln === 'hi' ? '⏰ गार्जियन टाइमर शुरू' : '⏰ Guardian Timer Started';
+        const notifBody = ln === 'mr' ? `आपल्या सुरक्षेसाठी ${zone.name} मधून ${remainingMin} मिनिटांत बाहेर निघा.` : ln === 'hi' ? `आपकी सुरक्षा के लिए ${zone.name} से ${remainingMin} मिनट में बाहर निकलें।` : `Exit ${zone.name} within ${remainingMin} minutes for your safety.`;
+
         await Notifications.scheduleNotificationAsync({
           content: {
-            title: '⏰ Guardian Timer Started',
-            body: `Exit ${zone.name} within ${remainingMin} minutes for your safety.`,
+            title: notifTitle,
+            body: notifBody,
             sound: true,
           },
           trigger: null,
@@ -100,10 +109,14 @@ export function useGuardianTimer() {
         timerRef.current = null;
       }
 
+      const ln = langRef.current;
+      const cancelTitle = ln === 'mr' ? '✅ गार्जियन टाइमर रद्द' : ln === 'hi' ? '✅ गार्जियन टाइमर रद्द' : '✅ Guardian Timer Cancelled';
+      const cancelBody = ln === 'mr' ? 'तुम्ही सुरक्षितपणे क्षेत्र सोडला. टाइमर थांबला.' : ln === 'hi' ? 'आपने सुरक्षित रूप से क्षेत्र छोड़ दिया। टाइमर रोक दिया गया।' : 'You have safely exited the zone. Timer stopped.';
+
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: '✅ Guardian Timer Cancelled',
-          body: 'You have safely exited the zone. Timer stopped.',
+          title: cancelTitle,
+          body: cancelBody,
         },
         trigger: null,
       });

@@ -107,7 +107,7 @@ const AdminDashboard = ({ navigation }) => {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View>
@@ -222,6 +222,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#222',
     paddingVertical: 15,
+    paddingTop: 25, // Extra top padding for status bar
     zIndex: 10, // Keep header on top
   },
   headerContent: {

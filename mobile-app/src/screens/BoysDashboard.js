@@ -71,6 +71,71 @@ import { useSafetyMonitor } from '../hooks/useSafetyMonitor';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ensurePermission, PERMISSIONS } from '../utils/permissionHelper';
 
+const ZONE_TRANSLATE = {
+  en: {},
+  mr: {
+    'SAFE LOCATION': 'सुरक्षित स्थान',
+    'DANGER': 'धोका',
+    'Entering High Risk Area': 'उच्च जोखीम क्षेत्रात प्रवेश',
+    'No Street Lights, Isolated Area': 'रस्त्यावर लाईट नाही, एकटे भाग',
+    'No Street Lights': 'रस्त्यावर लाईट नाही',
+    'Isolated Area': 'एकटा भाग',
+    'Deep Water': 'खोल पाणी',
+    'Wild Animal Area': 'वन्य प्राण्यांचा भाग',
+    'High Crime Rate': 'उच्च गुन्हेगारी दर',
+    'Accident Prone': 'अपघात-प्रवण',
+    'Sharp Turn': 'तीव्र वळण',
+    'Deep Potholes': 'खोल खड्डे',
+    'Danger Zone': 'धोक्याचा क्षेत्र',
+    'Entering': 'प्रवेश',
+    'HIGH RISK AREA': 'उच्च जोखीम क्षेत्र',
+    'RED ZONE': 'लाल क्षेत्र',
+    'CRIME AREA': 'गुन्हेगारी क्षेत्र',
+    'DARK AREA': 'गडद भाग',
+    'ACCIDENT ZONE': 'अपघात क्षेत्र',
+    'ANIMAL ZONE': 'प्राण्यांचा क्षेत्र',
+    'WATER ZONE': 'पाण्याचा क्षेत्र',
+    'NEEDS HELP': 'मदत हवी आहे',
+    'NOW': 'आता',
+    'SAFETY ALERT': 'सुरक्षा इशारा',
+    'Entering High Risk': 'उच्च जोखीम क्षेत्रात',
+  },
+  hi: {
+    'SAFE LOCATION': 'सुरक्षित स्थान',
+    'DANGER': 'खतरा',
+    'Entering High Risk Area': 'उच्च जोखिम क्षेत्र में प्रवेश',
+    'No Street Lights, Isolated Area': 'सड़क पर लाइट नहीं, अकेला क्षेत्र',
+    'No Street Lights': 'सड़क पर लाइट नहीं',
+    'Isolated Area': 'अकेला क्षेत्र',
+    'Deep Water': 'गहरा पानी',
+    'Wild Animal Area': 'जंगली जानवरों का क्षेत्र',
+    'High Crime Rate': 'उच्च अपराध दर',
+    'Accident Prone': 'दुर्घटना-प्रवण',
+    'Sharp Turn': 'तेज़ मोड़',
+    'Deep Potholes': 'गहरे गड्ढे',
+    'Danger Zone': 'खतरनाक क्षेत्र',
+    'Entering': 'प्रवेश',
+    'HIGH RISK AREA': 'उच्च जोखिम क्षेत्र',
+    'RED ZONE': 'लाल क्षेत्र',
+    'CRIME AREA': 'अपराध क्षेत्र',
+    'DARK AREA': 'अंधेरा क्षेत्र',
+    'ACCIDENT ZONE': 'दुर्घटना क्षेत्र',
+    'ANIMAL ZONE': 'जानवरों का क्षेत्र',
+    'WATER ZONE': 'पानी का क्षेत्र',
+    'NEEDS HELP': 'मदद चाहिए',
+    'NOW': 'अभी',
+    'SAFETY ALERT': 'सुरक्षा चेतावनी',
+    'Entering High Risk': 'उच्च जोखिम क्षेत्र में',
+  },
+};
+
+function tr(lang, text) {
+  if (!text) return text;
+  const dict = ZONE_TRANSLATE[lang];
+  if (!dict) return text;
+  return dict[text] || text;
+}
+
 const { width, height } = Dimensions.get('window');
 
 const suggestions = [
@@ -1262,8 +1327,8 @@ export default function BoysDashboard({ navigation }) {
           <LinearGradient colors={['#EF4444', '#B91C1C']} style={styles.dangerGradient} start={{x:0, y:0}} end={{x:1, y:0}}>
             <AlertTriangle color="#FFF" size={20} />
             <View style={styles.dangerTextContent}>
-              <Text style={styles.dangerTitle}>{currentZone.name.toUpperCase()}</Text>
-              <Text style={styles.dangerSubTitle}>{currentZone.warningMessage || 'Entering High Risk Area'}</Text>
+              <Text style={styles.dangerTitle}>{tr(lang, currentZone.name.toUpperCase())}</Text>
+              <Text style={styles.dangerSubTitle}>{tr(lang, currentZone.warningMessage) || tr(lang, 'Entering High Risk Area')}</Text>
             </View>
             <Volume2 color="#FFF" size={20} />
           </LinearGradient>

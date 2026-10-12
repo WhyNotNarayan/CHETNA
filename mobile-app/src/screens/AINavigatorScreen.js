@@ -75,31 +75,62 @@ const VOICE_ALERTS = {
   'DEFAULT': "Warning! You are approaching a high-risk area. Stay alert."
 };
 
+const VOICE_ALERTS_MR = {
+  'SHARP_TURN': "सावधान! पुढे वळण आहे. कृपया वेग कमी करा.",
+  'DARK_AREA': "सावधान! पुढे कमी दिसणारा भाग आहे. सतर्क रहा.",
+  'ANIMAL_ZONE': "सावधान! पुढे वन्य प्राण्यांचा मार्ग आहे. काळजी घ्या.",
+  'DEEP_WATER': "सावधान! पुढे खोल पाणी आहे. सुरक्षितपणे पळवा किंवा टाळा.",
+  'ACCIDENT_ZONE': "सावधान! पुढे अपघात होण्याची शक्यता आहे. काळजी घ्या.",
+  'CRIME': "सावधान! पुढे असुरक्षित भाग आहे. सतर्क रहा.",
+  'POTHOLE': "सावधान! पुढे खड्डा आहे. काळजीपूर्वक वाहन चालवा.",
+  'DEFAULT': "सावधान! तुम्ही उच्च जोखीम भागाजवळ येत आहात. सतर्क रहा."
+};
+
+const VOICE_ALERTS_HI = {
+  'SHARP_TURN': "सावधान! आगे तेज़ मोड़ है। कृपया धीरे चलाएं।",
+  'DARK_AREA': "सावधान! आगे कम रोशनी वाला क्षेत्र है। सतर्क रहें।",
+  'ANIMAL_ZONE': "सावधान! आगे जंगली जानवरों का क्षेत्र है। सावधान रहें।",
+  'DEEP_WATER': "सावधान! आगे गहरा पानी है। सुरक्षित रहें या बचें।",
+  'ACCIDENT_ZONE': "सावधान! आगे दुर्घटना क्षेत्र है। सावधानी से जाएं।",
+  'CRIME': "सावधान! आगे असुरक्षित क्षेत्र है। सतर्क रहें।",
+  'POTHOLE': "सावधान! आगे गड्ढा है। धीरे चलाएं।",
+  'DEFAULT': "सावधान! आप उच्च जोखिम क्षेत्र के पास पहुंच रहे हैं। सतर्क रहें।"
+};
+
+function getLangVoice(lang) {
+  if (lang === 'mr') return 'mr-IN';
+  if (lang === 'hi') return 'hi-IN';
+  return 'en-US';
+}
+
 function buildVoiceMsg(zone, lang) {
   const type = zone.type || '';
   const desc = (zone.warningMessage || zone.description || '').toLowerCase();
 
+  let key = type;
+  if (type === 'SHARP_TURN' || desc.includes('sharp turn')) key = 'SHARP_TURN';
+  else if (type === 'DARK_AREA' || desc.includes('light')) key = 'DARK_AREA';
+  else if (type === 'ANIMAL_ZONE' || desc.includes('animal')) key = 'ANIMAL_ZONE';
+  else if (type === 'DEEP_WATER' || desc.includes('water') || desc.includes('swim')) key = 'DEEP_WATER';
+  else if (desc.includes('pothole')) key = 'POTHOLE';
+  else if (type === 'ACCIDENT_ZONE' || desc.includes('accident')) key = 'ACCIDENT_ZONE';
+  else if (type === 'CRIME') key = 'CRIME';
+
   if (lang === 'mr') {
-    const name = zone.name || 'Danger Zone';
-    const crime = zone.crimeType || 'Danger';
+    if (VOICE_ALERTS_MR[key]) return VOICE_ALERTS_MR[key];
+    const name = zone.name || 'धोका क्षेत्र';
+    const crime = zone.crimeType || 'धोका';
     return `सावधान! ${name} जवळ ${crime} आहे. काळजी घ्या.`;
   }
 
   if (lang === 'hi') {
-    const name = zone.name || 'Danger Zone';
-    const crime = zone.crimeType || 'Danger';
+    if (VOICE_ALERTS_HI[key]) return VOICE_ALERTS_HI[key];
+    const name = zone.name || 'खतरनाक क्षेत्र';
+    const crime = zone.crimeType || 'खतरा';
     return `सावधान! ${name} के पास ${crime} है। सतर्क रहें।`;
   }
 
-  // English Mapping
-  if (type === 'SHARP_TURN' || desc.includes('sharp turn')) return VOICE_ALERTS.SHARP_TURN;
-  if (type === 'DARK_AREA' || desc.includes('light')) return VOICE_ALERTS.DARK_AREA;
-  if (type === 'ANIMAL_ZONE' || desc.includes('animal')) return VOICE_ALERTS.ANIMAL_ZONE;
-  if (type === 'DEEP_WATER' || desc.includes('water') || desc.includes('swim')) return VOICE_ALERTS.DEEP_WATER;
-  if (desc.includes('pothole')) return "Warning! Pothole ahead. Drive carefully.";
-  if (desc.includes('accident')) return VOICE_ALERTS.ACCIDENT_ZONE;
-
-  return VOICE_ALERTS[type] || VOICE_ALERTS.DEFAULT;
+  return VOICE_ALERTS[key] || VOICE_ALERTS.DEFAULT;
 }
 
 // ─────────────────────────────────────────────
@@ -133,25 +164,25 @@ export default function AINavigatorScreen({ route, navigation }) {
 
   useEffect(() => {
     const init = async () => {
-      await initLocation();
+      const coords = await initLocation();
       await fetchDangerZones();
 
       if (route.params?.rescueMission && route.params?.targetCoords) {
-        handleRescueSetup(route.params.targetCoords);
+        handleRescueSetup(route.params.targetCoords, coords);
       }
     };
     init();
     return () => stopNavigation();
   }, [route.params]);
 
-  const handleRescueSetup = async (coords) => {
+  const handleRescueSetup = async (targetCoords, currentCoords) => {
     setIsRescue(true);
     const dest = {
-      latitude: coords.latitude,
-      longitude: coords.longitude,
-      name: `RESCUE: ${coords.name}`
+      latitude: targetCoords.latitude,
+      longitude: targetCoords.longitude,
+      name: `RESCUE: ${targetCoords.name}`
     };
-    await selectDestination(dest);
+    await selectDestination(dest, currentCoords);
     // Auto-start for rescue
     setTimeout(() => startNavigation(), 1500);
   };
@@ -169,7 +200,7 @@ export default function AINavigatorScreen({ route, navigation }) {
 
   const initLocation = async () => {
     const hasLoc = await ensurePermission(PERMISSIONS.LOCATION);
-    if (!hasLoc) return;
+    if (!hasLoc) return null;
 
     const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
     let coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
@@ -182,6 +213,7 @@ export default function AINavigatorScreen({ route, navigation }) {
 
     setCurrentLocation(coords);
     mapRef.current?.animateToRegion({ ...coords, latitudeDelta: 0.05, longitudeDelta: 0.05 }, 800);
+    return coords;
   };
 
   const fetchDangerZones = async () => {
@@ -217,11 +249,14 @@ export default function AINavigatorScreen({ route, navigation }) {
     setIsSearching(false);
   };
 
-  const selectDestination = async (place) => {
+  const selectDestination = async (place, currentCoords) => {
     // Handle both Photon search result or direct coordinate object
     const dest = place.latitude ?
       { ...place } :
       { latitude: parseFloat(place.lat), longitude: parseFloat(place.lon), name: place.display_name.split(',')[0] };
+
+    const origin = currentCoords || currentLocation;
+    if (!origin) throw new Error('No location');
 
     setDestination(dest);
     setSearchResults([]);
@@ -229,8 +264,7 @@ export default function AINavigatorScreen({ route, navigation }) {
     setIsLoadingRoute(true);
 
     try {
-      if (!currentLocation) throw new Error('No location');
-      const url = `https://router.project-osrm.org/route/v1/driving/${currentLocation.longitude},${currentLocation.latitude};${dest.longitude},${dest.latitude}?overview=full&geometries=geojson&alternatives=3`;
+      const url = `https://router.project-osrm.org/route/v1/driving/${origin.longitude},${origin.latitude};${dest.longitude},${dest.latitude}?overview=full&geometries=geojson&alternatives=3`;
       const res = await fetch(url);
       const data = await res.json();
 
@@ -261,7 +295,7 @@ export default function AINavigatorScreen({ route, navigation }) {
         setAllRoutes(processed);
         setSelectedRouteIndex(safestIndex);
         updateRouteInfo(processed[safestIndex]);
-        mapRef.current?.fitToCoordinates([currentLocation, dest], { edgePadding: { top: 120, right: 40, bottom: 220, left: 40 }, animated: true });
+        mapRef.current?.fitToCoordinates([origin, dest], { edgePadding: { top: 120, right: 40, bottom: 220, left: 40 }, animated: true });
       }
     } catch (e) { console.warn('Route fetch error'); }
     setIsLoadingRoute(false);
@@ -288,7 +322,7 @@ export default function AINavigatorScreen({ route, navigation }) {
     alertedZones.current.clear();
     setIsNavigating(true);
     const welcome = lang === 'mr' ? `नेव्हिगेशन सुरू. ${destination.name} कडे जात आहे.` : lang === 'hi' ? `नेविगेशन शुरू। ${destination.name} की ओर जा रहे हैं।` : `Starting navigation to ${destination.name}.`;
-    Speech.speak(welcome, { language: lang === 'en' ? 'en-US' : 'hi-IN' });
+    Speech.speak(welcome, { language: getLangVoice(lang) });
 
     locationWatcher.current = await Location.watchPositionAsync({ accuracy: Location.Accuracy.High, timeInterval: 3000, distanceInterval: 10 }, (loc) => {
       const pos = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
@@ -312,7 +346,7 @@ export default function AINavigatorScreen({ route, navigation }) {
         if (!alertedZones.current.has(zone.id) && shouldAlert(zone)) {
           alertedZones.current.add(zone.id);
           setActiveAlertZone(zone);
-          Speech.speak(buildVoiceMsg(zone, lang), { language: lang === 'en' ? 'en-US' : 'hi-IN' });
+          Speech.speak(buildVoiceMsg(zone, lang), { language: getLangVoice(lang) });
           setTimeout(() => { setActiveAlertZone(null); alertedZones.current.delete(zone.id); }, 8000);
         }
       }

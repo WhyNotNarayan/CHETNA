@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useContext } from 'react';
 import { DeviceEventEmitter } from 'react-native';
 import Voice from '@dev-amirzubair/react-native-voice';
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
 import * as Location from 'expo-location';
 import { Audio } from 'expo-av';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../utils/api';
+import { LanguageContext } from '../context/LanguageContext';
 
 const LISTEN_DURATION = 8000;
 
@@ -15,11 +17,44 @@ const SOS_KEYWORDS = [
   'मला बचाव', 'मदत', 'मला मदत', 'धोका', 'संकट', 'वाचवा',
 ];
 
+const TTS = {
+  en: {
+    micOn: 'Microphone is on. Say Help me.',
+    sent: 'Emergency alert sent. Help is on the way.',
+    stopped: 'Listening stopped.',
+    prompt: 'Say "Help Me"',
+    recogLocale: 'en-US',
+    voice: 'en-US',
+  },
+  mr: {
+    micOn: 'माइक्रोफोन चालू आहे. मदत म्हणा.',
+    sent: 'आपत्कालीन इशारा पाठवला. मदत येत आहे.',
+    stopped: 'ऐकणे थांबले.',
+    prompt: '"मदत" म्हणा',
+    recogLocale: 'mr-IN',
+    voice: 'mr-IN',
+  },
+  hi: {
+    micOn: 'माइक्रोफ़ोन चालू है। मदद कहें।',
+    sent: 'आपातकालीन अलर्ट भेजा गया। मदद आ रही है।',
+    stopped: 'सुनना बंद।',
+    prompt: '"मदद" कहें',
+    recogLocale: 'hi-IN',
+    voice: 'hi-IN',
+  },
+};
+
 export function useVolumeSOS(navigation, userData) {
   const [isMicActive, setIsMicActive] = useState(false);
   const [voicePrompt, setVoicePrompt] = useState('');
   const listenTimeout = useRef(null);
   const isProcessing = useRef(false);
+  const { lang } = useContext(LanguageContext);
+  const langRef = useRef(lang);
+
+  useEffect(() => { langRef.current = lang; }, [lang]);
+
+  const tts = () => TTS[langRef.current] || TTS.en;
 
   const stopMic = () => {
     try {
@@ -60,7 +95,7 @@ export function useVolumeSOS(navigation, userData) {
       console.log('SOS: Server response:', response.data);
 
       if (response.data?.success && navigation) {
-        Speech.speak('Emergency alert sent. Help is on the way.', { language: 'en-US' });
+        Speech.speak(tts().sent, { language: tts().voice });
         navigation.navigate('SOSTracking', { 
           alertId: response.data.alertId,
           evidenceToken: response.data.evidenceToken,
@@ -98,10 +133,10 @@ export function useVolumeSOS(navigation, userData) {
     }
 
     setIsMicActive(true);
-    setVoicePrompt('Say "Help Me"');
+    setVoicePrompt(tts().prompt);
 
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    Speech.speak('Microphone is on. Say Help me.', { language: 'en-US' });
+    Speech.speak(tts().micOn, { language: tts().voice });
 
     try {
       await Voice.destroy();
@@ -119,8 +154,8 @@ export function useVolumeSOS(navigation, userData) {
         console.log('SOS Voice ended');
       };
 
-      await Voice.start('en-US');
-      console.log('SOS Voice started successfully');
+      await Voice.start(tts().recogLocale);
+      console.log('SOS Voice started successfully with locale:', tts().recogLocale);
     } catch (e) {
       console.error('Voice start error:', e);
     }
@@ -128,7 +163,7 @@ export function useVolumeSOS(navigation, userData) {
     listenTimeout.current = setTimeout(() => {
       console.log('SOS Voice timeout - stopping microphone (no keyword detected)');
       stopMic();
-      Speech.speak('Listening stopped.', { language: 'en-US' });
+      Speech.speak(tts().stopped, { language: tts().voice });
     }, LISTEN_DURATION);
   };
 

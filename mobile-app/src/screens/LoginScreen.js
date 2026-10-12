@@ -31,7 +31,7 @@ export default function LoginScreen({ navigation }) {
       if (error.response) {
         msg = error.response.data.message || msg;
       } else if (error.request) {
-        msg = 'Network Error: Cannot connect to server. Ensure phone and laptop are on same Wi-Fi (IP: 192.168.1.104)';
+        msg = 'Network Error: Cannot connect to server. Ensure phone and laptop are on the same network and EXPO_PUBLIC_API_URL in .env matches your laptop IP.';
       } else {
         msg = error.message;
       }

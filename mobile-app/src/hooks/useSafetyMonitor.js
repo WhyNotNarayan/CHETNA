@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import * as Location from 'expo-location';
 import * as Speech from 'expo-speech';
 import * as Notifications from 'expo-notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../utils/api';
 import { getLocalRedZones, saveRedZones } from '../database/localDb';
 import { isTimeInRange } from '../utils/time';
@@ -21,21 +22,74 @@ const VOICE_ALERTS = {
   'DEEP_WATER': "Warning! Deep water area. Please swim safely or avoid entering.",
   'ACCIDENT_ZONE': "Warning! Accident-prone area ahead. Proceed with caution.",
   'CRIME': "Warning! Reported unsafe area ahead. Stay alert.",
+  'POTHOLE': "Warning! Pothole ahead. Drive carefully.",
   'DEFAULT': "Warning! You are approaching a high-risk area. Stay alert."
 };
 
-const getVoiceMessage = (zone) => {
+const VOICE_ALERTS_MR = {
+  'SHARP_TURN': "सावधान! पुढे वळण आहे. कृपया वेग कमी करा.",
+  'DARK_AREA': "सावधान! पुढे कमी दिसणारा भाग आहे. सतर्क रहा.",
+  'ANIMAL_ZONE': "सावधान! पुढे वन्य प्राण्यांचा मार्ग आहे. काळजी घ्या.",
+  'DEEP_WATER': "सावधान! पुढे खोल पाणी आहे. सुरक्षितपणे पळवा किंवा टाळा.",
+  'ACCIDENT_ZONE': "सावधान! पुढे अपघात होण्याची शक्यता आहे. काळजी घ्या.",
+  'CRIME': "सावधान! पुढे असुरक्षित भाग आहे. सतर्क रहा.",
+  'POTHOLE': "सावधान! पुढे खड्डा आहे. काळजीपूर्वक वाहन चालवा.",
+  'DEFAULT': "सावधान! तुम्ही उच्च जोखीम भागाजवळ येत आहात. सतर्क रहा."
+};
+
+const VOICE_ALERTS_HI = {
+  'SHARP_TURN': "सावधान! आगे तेज़ मोड़ है। कृपया धीरे चलाएं।",
+  'DARK_AREA': "सावधान! आगे कम रोशनी वाला क्षेत्र है। सतर्क रहें।",
+  'ANIMAL_ZONE': "सावधान! आगे जंगली जानवरों का क्षेत्र है। सावधान रहें।",
+  'DEEP_WATER': "सावधान! आगे गहरा पानी है। सुरक्षित रहें या बचें।",
+  'ACCIDENT_ZONE': "सावधान! आगे दुर्घटना क्षेत्र है। सावधानी से जाएं।",
+  'CRIME': "सावधान! आगे असुरक्षित क्षेत्र है। सतर्क रहें।",
+  'POTHOLE': "सावधान! आगे गड्ढा है। धीरे चलाएं।",
+  'DEFAULT': "सावधान! आप उच्च जोखिम क्षेत्र के पास पहुंच रहे हैं। सतर्क रहें।"
+};
+
+const NOTIF_TITLE = {
+  en: (name) => `SAFETY ALERT: ${name}`,
+  mr: (name) => `सुरक्षा इशारा: ${name}`,
+  hi: (name) => `सुरक्षा चेतावनी: ${name}`,
+};
+
+const NOTIF_BODY = {
+  en: (msg) => msg,
+  mr: (msg) => msg,
+  hi: (msg) => msg,
+};
+
+async function getLang() {
+  try {
+    return (await AsyncStorage.getItem('user_lang')) || 'en';
+  } catch { return 'en'; }
+}
+
+function getLangVoice(lang) {
+  if (lang === 'mr') return 'mr-IN';
+  if (lang === 'hi') return 'hi-IN';
+  return 'en-US';
+}
+
+const getKey = (zone) => {
   const type = zone.type || '';
   const desc = (zone.warningMessage || zone.description || '').toLowerCase();
+  if (type === 'SHARP_TURN' || desc.includes('sharp turn')) return 'SHARP_TURN';
+  if (type === 'DARK_AREA' || desc.includes('light')) return 'DARK_AREA';
+  if (type === 'ANIMAL_ZONE' || desc.includes('animal')) return 'ANIMAL_ZONE';
+  if (type === 'DEEP_WATER' || desc.includes('water') || desc.includes('swim')) return 'DEEP_WATER';
+  if (desc.includes('pothole')) return 'POTHOLE';
+  if (type === 'ACCIDENT_ZONE' || desc.includes('accident')) return 'ACCIDENT_ZONE';
+  if (type === 'CRIME') return 'CRIME';
+  return type || 'DEFAULT';
+};
 
-  if (type === 'SHARP_TURN' || desc.includes('sharp turn')) return VOICE_ALERTS.SHARP_TURN;
-  if (type === 'DARK_AREA' || desc.includes('light')) return VOICE_ALERTS.DARK_AREA;
-  if (type === 'ANIMAL_ZONE' || desc.includes('animal')) return VOICE_ALERTS.ANIMAL_ZONE;
-  if (type === 'DEEP_WATER' || desc.includes('water') || desc.includes('swim')) return VOICE_ALERTS.DEEP_WATER;
-  if (desc.includes('pothole')) return "Warning! Pothole ahead. Drive carefully.";
-  if (desc.includes('accident')) return VOICE_ALERTS.ACCIDENT_ZONE;
-
-  return VOICE_ALERTS[type] || VOICE_ALERTS.DEFAULT;
+const getVoiceMessage = (zone, lang = 'en') => {
+  const key = getKey(zone);
+  if (lang === 'mr') return VOICE_ALERTS_MR[key] || VOICE_ALERTS_MR.DEFAULT;
+  if (lang === 'hi') return VOICE_ALERTS_HI[key] || VOICE_ALERTS_HI.DEFAULT;
+  return VOICE_ALERTS[key] || VOICE_ALERTS.DEFAULT;
 };
 
 function getDistance(lat1, lon1, lat2, lon2) {
@@ -56,13 +110,20 @@ export function useSafetyMonitor(guardianTimer = null) {
   const locationWatcher = useRef(null);
   const lastZoneId = useRef(null);
   const zonesRef = useRef([]);
+  const langRef = useRef('en');
 
   useEffect(() => {
     const requestNotif = async () => {
       const { status } = await Notifications.requestPermissionsAsync();
       if (status !== 'granted') console.log('Notification permission not granted');
+      langRef.current = await getLang();
     };
     requestNotif();
+
+    const langInterval = setInterval(async () => {
+      langRef.current = await getLang();
+    }, 5000);
+    return () => clearInterval(langInterval);
   }, []);
 
   const fetchZones = async () => {
@@ -121,14 +182,16 @@ export function useSafetyMonitor(guardianTimer = null) {
         if (!warnedZones.current.has(zone.id)) {
           warnedZones.current.add(zone.id);
 
-          const msg = getVoiceMessage(zone);
+          const lang = langRef.current;
+          const msg = getVoiceMessage(zone, lang);
 
           Speech.stop();
-          Speech.speak(msg, { language: 'en-US', rate: 0.9, pitch: 1.0 });
+          Speech.speak(msg, { language: getLangVoice(lang), rate: 0.9, pitch: 1.0 });
 
+          const titleFn = NOTIF_TITLE[lang] || NOTIF_TITLE.en;
           await Notifications.scheduleNotificationAsync({
             content: {
-              title: `SAFETY ALERT: ${zone.name}`,
+              title: titleFn(zone.name),
               body: msg,
               data: { zoneId: zone.id },
               sound: true,

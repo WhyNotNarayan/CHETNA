@@ -99,10 +99,15 @@ TaskManager.defineTask(SAFETY_CHECK_TASK, async () => {
       const dist = getDistance(latitude, longitude, zoneLat, zoneLng);
 
       if (dist <= zoneRadius) {
+        let ln = 'en';
+        try { ln = (await AsyncStorage.getItem('user_lang')) || 'en'; } catch {}
+        const title = ln === 'mr' ? `⚠️ सुरक्षा इशारा: ${zone.name}` : ln === 'hi' ? `⚠️ सुरक्षा चेतावनी: ${zone.name}` : `⚠️ Safety Alert: ${zone.name}`;
+        const body = ln === 'mr' ? 'तुम्ही उच्च जोखीम भागात आहात. सतर्क रहा आणि सुरक्षित रहा.' : ln === 'hi' ? 'आप उच्च जोखिम क्षेत्र में हैं। सतर्क रहें और सुरक्षित रहें।' : `You are in a high-risk area. Stay alert and stay safe.`;
+
         await Notifications.scheduleNotificationAsync({
           content: {
-            title: `⚠️ Safety Alert: ${zone.name}`,
-            body: `You are in a high-risk area. Stay alert and stay safe.`,
+            title: title,
+            body: body,
             data: { zoneId: zone.id, type: 'background_zone_alert' },
             sound: true,
           },
