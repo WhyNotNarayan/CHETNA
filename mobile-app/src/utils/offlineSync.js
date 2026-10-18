@@ -88,6 +88,7 @@ const uploadMediaFile = async (alertId, fileUri, fileType) => {
 };
 
 // Queue a local audio/video file URI for upload (tries immediate upload first)
+// Returns true = uploaded to server now, false = queued for later retry.
 export const queueMedia = async (alertId, fileUri, fileType) => {
   try {
     console.log(`[OfflineSync] queueMedia called: ${fileType} for alert ${alertId}`);
@@ -100,7 +101,7 @@ export const queueMedia = async (alertId, fileUri, fileType) => {
         if (success) {
           console.log('[OfflineSync] Immediate upload succeeded!');
           try { await FileSystem.deleteAsync(fileUri, { idempotent: true }); } catch (e) {}
-          return; // Done — no need to queue
+          return true; // Done — no need to queue
         }
         console.warn('[OfflineSync] Immediate upload failed, queuing for retry...');
       } catch (uploadErr) {
@@ -114,8 +115,10 @@ export const queueMedia = async (alertId, fileUri, fileType) => {
     queue.push({ alertId, fileUri, fileType, timestamp: Date.now() });
     await AsyncStorage.setItem(QUEUE_KEY_MEDIA, JSON.stringify(queue));
     console.log('[OfflineSync] Media queued for retry. Queue size:', queue.length);
+    return false;
   } catch (err) {
     console.error('[OfflineSync] Error in queueMedia:', err);
+    return false;
   }
 };
 

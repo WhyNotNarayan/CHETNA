@@ -61,6 +61,23 @@ const VOICE_EXIT_EN = "You have left the danger zone. This area is now safe.";
 const VOICE_EXIT_MR = "तुम्ही धोकादायक भागाबाहेर आलात. हा भाग आता सुरक्षित आहे.";
 const VOICE_EXIT_HI = "आप खतरनाक क्षेत्र से बाहर आ गए हैं। यह क्षेत्र अब सुरक्षित है।";
 
+const VOICE_SAFE_EN = "You are entering a safe zone. Emergency help is nearby.";
+const VOICE_SAFE_MR = "तुम्ही सुरक्षित क्षेत्रात प्रवेश करत आहात. आणीबाणी मदत जवळ आहे.";
+const VOICE_SAFE_HI = "आप सुरक्षित क्षेत्र में प्रवेश कर रहे हैं। आपातकालीन सहायता पास में है।";
+
+const NOTIF_SAFE_ZONE = {
+  en: (name) => ({ title: `✅ Safe Zone: ${name}`, body: VOICE_SAFE_EN }),
+  mr: (name) => ({ title: `✅ सुरक्षित क्षेत्र: ${name}`, body: VOICE_SAFE_MR }),
+  hi: (name) => ({ title: `✅ सुरक्षित क्षेत्र: ${name}`, body: VOICE_SAFE_HI }),
+};
+
+// Emulators report a default US location — map to Sindhudurg for zone checks
+// (real phones in India never match these bounds).
+const sanitize = (latitude, longitude) =>
+  latitude > 30 && latitude < 40 && longitude < -120
+    ? { latitude: 16.0361, longitude: 73.5042 }
+    : { latitude, longitude };
+
 const NOTIF_SAFE_EXIT = {
   en: (name) => ({ title: `✅ Safe: ${name}`, body: VOICE_EXIT_EN }),
   mr: (name) => ({ title: `✅ सुरक्षित: ${name}`, body: VOICE_EXIT_MR }),
@@ -119,6 +136,7 @@ export function useSafetyMonitor(guardianTimer = null) {
   const warnedZones = useRef(new Set());
   const locationWatcher = useRef(null);
   const lastZoneId = useRef(null);
+  const lastSafeId = useRef(null);
   const zonesRef = useRef([]);
   const langRef = useRef('en');
 
@@ -182,10 +200,9 @@ export function useSafetyMonitor(guardianTimer = null) {
   const checkLocationAgainstZones = async (latitude, longitude) => {
     const zones = zonesRef.current;
     let activeZoneFound = null;
+    let safeFound = null;
 
     for (const zone of zones) {
-      // Safe zones are never danger zones — must not voice "danger" warnings
-      if (zone.type === 'SAFE_ZONE') continue;
       // Skip zones outside their active hours (e.g., night-only crime zones)
       if (!isTimeInRange(zone.startTime, zone.endTime)) continue;
 
@@ -193,6 +210,12 @@ export function useSafetyMonitor(guardianTimer = null) {
       const dist = getDistance(latitude, longitude, zone.latitude, zone.longitude);
 
       if (dist <= radius + 100) {
+        // Safe zones are tracked but must NEVER win over a danger zone
+        if (zone.type === 'SAFE_ZONE') {
+          if (!safeFound) safeFound = zone;
+          continue;
+        }
+
         activeZoneFound = zone;
 
         if (!warnedZones.current.has(zone.id)) {
@@ -223,6 +246,34 @@ export function useSafetyMonitor(guardianTimer = null) {
       }
     }
 
+    // Safe zone entry: announce POSITIVELY so detection is never silent
+    // (it just must not claim "danger" for a safe area).
+    const safeId = safeFound ? safeFound.id : null;
+    if (safeId) {
+      if (!activeZoneFound && !warnedZones.current.has(safeId)) {
+        warnedZones.current.add(safeId);
+        const lang = langRef.current;
+        const safeMsg = lang === 'mr' ? VOICE_SAFE_MR : lang === 'hi' ? VOICE_SAFE_HI : VOICE_SAFE_EN;
+
+        Speech.stop();
+        Speech.speak(safeMsg, { language: getLangVoice(lang), rate: 0.9, pitch: 1.0 });
+
+        const safeFn = NOTIF_SAFE_ZONE[lang] || NOTIF_SAFE_ZONE.en;
+        const safeNotif = safeFn(safeFound.name);
+        await Notifications.scheduleNotificationAsync({
+          content: { title: safeNotif.title, body: safeNotif.body, data: { zoneId: safeId, type: 'safe_zone_entry' }, sound: true },
+          trigger: null,
+        });
+
+        setTimeout(() => warnedZones.current.delete(safeId), 600000);
+      }
+      lastSafeId.current = safeId;
+    } else if (lastSafeId.current) {
+      // Left the safe zone — re-arm so the next entry announces again
+      warnedZones.current.delete(lastSafeId.current);
+      lastSafeId.current = null;
+    }
+
     // Exit detection: user was inside a zone but is now outside
     const currentZoneId = activeZoneFound ? activeZoneFound.id : null;
     const prevZoneId = lastZoneId.current;
@@ -249,6 +300,9 @@ export function useSafetyMonitor(guardianTimer = null) {
           trigger: null,
         });
       }
+      // Re-arm immediately on EXIT — the old 10-minute cooldown left the
+      // monitor blind if you left and re-entered the same zone quickly.
+      warnedZones.current.delete(prevZoneId);
     }
     lastZoneId.current = currentZoneId;
 
@@ -288,7 +342,8 @@ export function useSafetyMonitor(guardianTimer = null) {
           },
           async (location) => {
             if (!active) return;
-            const { latitude, longitude } = location.coords;
+            // Emulator fix: default US GPS → Sindhudurg (matches navigator)
+            const { latitude, longitude } = sanitize(location.coords.latitude, location.coords.longitude);
             await checkLocationAgainstZones(latitude, longitude);
           }
         );

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, Modal, TextInput, Alert, ActivityIndicator, Share, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, Modal, TextInput, Alert, ActivityIndicator, Share, Dimensions, Linking } from 'react-native';
 import { Shield, Users, Clock, CheckCircle, XCircle, Share2, MapPin, Camera as CameraIcon, WifiOff, Upload, CloudUpload } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '../utils/api';
@@ -47,6 +47,34 @@ export default function SOSTrackingScreen({ route, navigation }) {
   }, [cameraPermission?.granted, micPermission?.granted]);
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ── Evidence event log (visible on screen — no more guessing) ──
+  const [evLog, setEvLog] = useState([]);
+  const pushLog = (msg) => {
+    const t = new Date().toLocaleTimeString();
+    setEvLog(prev => [`${t}  ${msg}`, ...prev].slice(0, 5));
+  };
+
+  // ── Mic mutex ─────────────────────────────────────────────
+  // Android allows only ONE active microphone client. The audio loop held
+  // the mic for 30s while camera.recordAsync also tried to capture audio →
+  // camera recording failed forever (audio saved, video never did).
+  // The two loops now take turns holding the mic.
+  const micOwner = useRef(null);
+  const permWarned = useRef(false);
+
+  const acquireMic = async (me) => {
+    while (micOwner.current && micOwner.current !== me) {
+      if (!isTracking.current) return false;
+      await sleep(400);
+    }
+    if (!isTracking.current) return false;
+    micOwner.current = me;
+    return true;
+  };
+  const releaseMic = (me) => {
+    if (micOwner.current === me) micOwner.current = null;
+  };
 
   const fetchStats = async () => {
     // If offline alert hasn't synced yet, don't try to fetch stats
@@ -158,10 +186,20 @@ export default function SOSTrackingScreen({ route, navigation }) {
     while (isTracking.current) {
       if (!cameraRef.current || !permRef.current.camera || !permRef.current.mic) {
         console.log('[SOS] Camera or Mic permission not granted, or ref missing');
+        if (!permWarned.current) {
+          permWarned.current = true;
+          pushLog('⚠ Camera/mic permission missing — video paused (tap ALLOW below)');
+        }
         await sleep(2000);
         continue;
       }
+      permWarned.current = false;
 
+      // Hold the mic exclusively while the camera records — otherwise the
+      // audio loop's AudioRecord makes recordAsync fail every time.
+      if (!(await acquireMic('video'))) break;
+
+      let video = null;
       try {
         console.log('[SOS] Starting video clip...');
         setIsRecording(true);
@@ -174,30 +212,35 @@ export default function SOSTrackingScreen({ route, navigation }) {
         const stopTimer = setTimeout(() => {
           try { cameraRef.current?.stopRecording(); } catch (e) {}
         }, 28000);
-        const video = await recPromise;
+        video = await recPromise;
         clearTimeout(stopTimer);
-
         console.log('[SOS] Video clip finished:', video?.uri);
+      } catch (err) {
+        console.error('[SOS] Video recording error:', err.message);
+        pushLog(`❌ Video error: ${err.message}`);
+      } finally {
+        releaseMic('video');
         setIsRecording(false);
         isRecordingRef.current = false;
+      }
 
-        if (video && video.uri) {
+      if (video && video.uri) {
+        try {
           // CRITICAL: Wait for file to be fully written to disk
           await waitForFileReady(video.uri);
           if (isOffline) {
             await saveEvidenceOffline(alertId, video.uri, 'VIDEO');
+            pushLog('📴 Video clip saved on phone (offline queue)');
           } else {
-            await queueMedia(serverAlertId || alertId, video.uri, 'VIDEO');
+            const ok = await queueMedia(serverAlertId || alertId, video.uri, 'VIDEO');
+            pushLog(ok ? '✅ Video clip uploaded to evidence vault' : '⏳ Video upload queued — will retry');
           }
+        } catch (e) {
+          pushLog(`❌ Video save failed: ${e.message}`);
         }
-
-        if (isTracking.current) await sleep(2000);
-      } catch (err) {
-        console.error('[SOS] Video recording error:', err.message);
-        setIsRecording(false);
-        isRecordingRef.current = false;
-        if (isTracking.current) await sleep(5000);
       }
+
+      if (isTracking.current) await sleep(video ? 2000 : 5000);
     }
 
     videoLoopRef.current = false;
@@ -222,8 +265,12 @@ export default function SOSTrackingScreen({ route, navigation }) {
     audioLoopRef.current = true;
 
     while (isTracking.current) {
+      // Take turns with the camera for the microphone (see mic mutex above)
+      if (!(await acquireMic('audio'))) break;
+
       try {
         console.log('[SOS] Starting 30s audio clip...');
+        pushLog('🎙️ Recording audio clip…');
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: true,
           playsInSilentModeIOS: true,
@@ -246,8 +293,10 @@ export default function SOSTrackingScreen({ route, navigation }) {
           if (uri) {
             if (isOffline) {
               await saveEvidenceOffline(alertId, uri, 'AUDIO');
+              pushLog('📴 Audio clip saved on phone (offline queue)');
             } else {
-              await queueMedia(serverAlertId || alertId, uri, 'AUDIO');
+              const ok = await queueMedia(serverAlertId || alertId, uri, 'AUDIO');
+              pushLog(ok ? '✅ Audio clip uploaded to evidence vault' : '⏳ Audio upload queued — will retry');
               attemptSync();
             }
           }
@@ -258,9 +307,12 @@ export default function SOSTrackingScreen({ route, navigation }) {
         if (isTracking.current) await sleep(1000);
       } catch (err) {
         console.error('[SOS] Audio recording error:', err.message);
+        pushLog(`❌ Audio error: ${err.message}`);
         audioRecording.current = null;
         await Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
         if (isTracking.current) await sleep(5000);
+      } finally {
+        releaseMic('audio');
       }
     }
 
@@ -297,8 +349,8 @@ export default function SOSTrackingScreen({ route, navigation }) {
     isTracking.current = true;
     fetchStats();
     startLocationLoop();
+    startContinuousVideo(); // starts FIRST so it wins the mic before audio // guarded — onCameraReady may have already started it
     startContinuousAudio();
-    startContinuousVideo(); // guarded — onCameraReady may have already started it
 
     const statsInterval = setInterval(fetchStats, 5000);
     const syncInterval = setInterval(attemptSync, 15000);
@@ -435,14 +487,46 @@ export default function SOSTrackingScreen({ route, navigation }) {
             mode="video"
             onCameraReady={() => {
               console.log('[SOS] Camera Ready. Starting loop...');
+              pushLog('📷 Camera ready');
               startContinuousVideo();
             }}
           />
           <View style={styles.recBadge}>
-            <View style={styles.recDot} />
-            <Text style={styles.recText}>RECORDING EVIDENCE</Text>
+            <View style={[styles.recDot, { backgroundColor: !cameraPermission?.granted ? '#F59E0B' : isRecording ? '#FF4444' : '#999' }]} />
+            <Text style={styles.recText}>
+              {!cameraPermission?.granted
+                ? 'CAMERA PERMISSION NEEDED'
+                : isRecording
+                  ? 'RECORDING EVIDENCE'
+                  : 'STARTING CAMERA…'}
+            </Text>
           </View>
+          {cameraPermission && !cameraPermission.granted && (
+            <TouchableOpacity
+              style={styles.permBtn}
+              onPress={async () => {
+                if (cameraPermission.canAskAgain) {
+                  pushLog('Requesting camera permission…');
+                  const res = await requestCameraPermission();
+                  pushLog(res?.granted ? '✅ Camera permission granted' : '❌ Camera permission denied');
+                } else {
+                  await Linking.openSettings();
+                }
+              }}
+            >
+              <Text style={styles.permBtnText}>{cameraPermission.canAskAgain ? 'ALLOW CAMERA ACCESS' : 'OPEN SETTINGS'}</Text>
+            </TouchableOpacity>
+          )}
         </View>
+
+        {/* Live evidence log — shows exactly what saved/uploaded/failed */}
+        {evLog.length > 0 && (
+          <View style={styles.evLogBox}>
+            {evLog.map((line, i) => (
+              <Text key={i} numberOfLines={1} style={[styles.evLogText, i === 0 && styles.evLogTextNew]}>{line}</Text>
+            ))}
+          </View>
+        )}
 
         <View style={styles.statGrid}>
           <StatBox icon={<Users color="#FF4444" />} label="Notified" value={stats?.notifiedCount} />
@@ -536,8 +620,13 @@ const styles = StyleSheet.create({
   cameraContainer: { width: '100%', height: 200, backgroundColor: '#000', borderRadius: 20, overflow: 'hidden', marginBottom: 20 },
   camera: { flex: 1 },
   recBadge: { position: 'absolute', top: 15, left: 15, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF4444' },
+  recDot: { width: 8, height: 8, borderRadius: 4 },
   recText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
+  permBtn: { position: 'absolute', bottom: 15, alignSelf: 'center', backgroundColor: '#FF9800', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12 },
+  permBtnText: { color: '#FFF', fontWeight: '900', fontSize: 13 },
+  evLogBox: { backgroundColor: '#101820', borderRadius: 12, padding: 12, marginBottom: 16, gap: 4 },
+  evLogText: { color: '#8899AA', fontSize: 11, fontFamily: 'monospace' },
+  evLogTextNew: { color: '#4FC3F7', fontWeight: 'bold' },
   statGrid: { flexDirection: 'row', gap: 15, marginBottom: 20 },
   statBox: { flex: 1, backgroundColor: '#F8F9FA', padding: 20, borderRadius: 20, alignItems: 'center', borderWidth: 1, borderColor: '#EEE' },
   statValue: { fontSize: 24, fontWeight: 'bold', marginVertical: 5 },

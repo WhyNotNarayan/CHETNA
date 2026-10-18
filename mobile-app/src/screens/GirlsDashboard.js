@@ -202,12 +202,12 @@ export default function GirlsDashboard({ navigation }) {
     }
   };
 
-  // Link Secret Cop state
+  // Link Parent state (girl enters ONLY her parent's number - no cop browsing)
   const [showLinkModal, setShowLinkModal] = useState(false);
-  const [copList, setCopList] = useState([]);
-  const [copLinkStatus, setCopLinkStatus] = useState({}); // copId -> PENDING | APPROVED | REJECTED
-  const [loadingCops, setLoadingCops] = useState(false);
-  const [requestingCopId, setRequestingCopId] = useState(null);
+  const [myLinks, setMyLinks] = useState([]); // parent link requests + statuses
+  const [parentPhone, setParentPhone] = useState('');
+  const [sendingRequest, setSendingRequest] = useState(false);
+  const [loadingLinks, setLoadingLinks] = useState(false);
 
   useEffect(() => {
     const fetchNews = async () => {
@@ -326,39 +326,39 @@ export default function GirlsDashboard({ navigation }) {
 
   const openLinkModal = async () => {
     setShowLinkModal(true);
-    setLoadingCops(true);
+    setLoadingLinks(true);
     try {
-      const [copsRes, linksRes] = await Promise.all([
-        api.get('/admin/verified-secret-cops'),
-        api.get('/cop-links/my-links'),
-      ]);
-      if (copsRes.data?.success) setCopList(copsRes.data.users || []);
-      if (linksRes.data?.success) {
-        const map = {};
-        (linksRes.data.links || []).forEach((l) => {
-          if (l.copId) map[l.copId] = l.status;
-        });
-        setCopLinkStatus(map);
-      }
+      const linksRes = await api.get('/cop-links/my-links');
+      if (linksRes.data?.success) setMyLinks(linksRes.data.links || []);
     } catch (e) {
-      Alert.alert('Error', 'Could not load secret cops. Please try again.');
+      setMyLinks([]);
     } finally {
-      setLoadingCops(false);
+      setLoadingLinks(false);
     }
   };
 
-  const sendCopRequest = async (copId) => {
-    setRequestingCopId(copId);
+  const linkParentByPhone = async () => {
+    const phone = parentPhone.trim();
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 10) {
+      Alert.alert('Invalid Number', "Please enter your parent's 10-digit mobile number.");
+      return;
+    }
+    setSendingRequest(true);
     try {
-      const res = await api.post('/cop-links/request', { copId });
+      const res = await api.post('/cop-links/request', { parentPhone: phone });
       if (res.data?.success) {
-        setCopLinkStatus((prev) => ({ ...prev, [copId]: res.data.status || 'PENDING' }));
-        Alert.alert('Request Sent', res.data.message || 'Waiting for the secret cop to approve.');
+        Alert.alert('Link Parent', res.data.message || 'Link request sent to your parent.');
+        setParentPhone('');
+        try {
+          const linksRes = await api.get('/cop-links/my-links');
+          if (linksRes.data?.success) setMyLinks(linksRes.data.links || []);
+        } catch (e) {}
       }
     } catch (e) {
-      Alert.alert('Request Failed', e.response?.data?.message || 'Could not send link request.');
+      Alert.alert('Link Parent', e.response?.data?.message || 'Could not send link request.');
     } finally {
-      setRequestingCopId(null);
+      setSendingRequest(false);
     }
   };
 
@@ -449,7 +449,7 @@ export default function GirlsDashboard({ navigation }) {
         <View style={[styles.actionsGrid, { marginBottom: 30, gap: 12 }]}>
           <ActionItem icon={<Navigation color="#6200ee" size={Math.min(width * 0.06, 22)} />} label="Safe Route" itemWidth={actionWidth} onPress={() => navigation.navigate('AINavigator')} />
           <ActionItem icon={<Newspaper color="#6200ee" size={Math.min(width * 0.06, 22)} />} label="Local News" itemWidth={actionWidth} />
-          <ActionItem icon={<Users color="#6200ee" size={Math.min(width * 0.06, 22)} />} label="Link Cop" itemWidth={actionWidth} onPress={openLinkModal} />
+          <ActionItem icon={<Users color="#6200ee" size={Math.min(width * 0.06, 22)} />} label="Link Parent" itemWidth={actionWidth} onPress={openLinkModal} />
           <ActionItem icon={<Camera color="#6200ee" size={Math.min(width * 0.06, 22)} />} label="Evidence" itemWidth={actionWidth} onPress={async () => { const hasCam = await ensurePermission(PERMISSIONS.CAMERA); if (hasCam) setShowEvidencePasswordModal(true); }} />
         </View>
 
@@ -461,51 +461,65 @@ export default function GirlsDashboard({ navigation }) {
         </ScrollView>
       </ScrollView>
 
-      {/* Link Secret Cop Modal */}
+      {/* Link Parent Modal - parent's phone number only */}
       <Modal visible={showLinkModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { maxHeight: '80%' }]}>
-            <Text style={styles.modalTitle}>Link Secret Cop</Text>
-            <Text style={styles.modalSub}>Verified secret cops who get your SOS instantly.</Text>
+            <Text style={styles.modalTitle}>Link Parent</Text>
+            <Text style={styles.modalSub}>Enter only your parent's mobile number. They must already be registered on Chetna as a verified Secret Cop.</Text>
 
-            {loadingCops ? (
-              <ActivityIndicator color="#6200ee" style={{ marginVertical: 25 }} />
-            ) : copList.length === 0 ? (
-              <Text style={styles.copEmpty}>No verified secret cops available yet.</Text>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>PARENT'S MOBILE NUMBER</Text>
+              <TextInput
+                style={styles.input}
+                value={parentPhone}
+                onChangeText={setParentPhone}
+                placeholder="10-digit mobile number"
+                placeholderTextColor="#999"
+                keyboardType="phone-pad"
+                maxLength={14}
+                returnKeyType="done"
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.copRequestBtn, { width: '100%', paddingVertical: 14 }]}
+              onPress={linkParentByPhone}
+              disabled={sendingRequest}
+            >
+              {sendingRequest
+                ? <ActivityIndicator size="small" color="#FFF" />
+                : <Text style={styles.copRequestBtnText}>SEND LINK REQUEST</Text>}
+            </TouchableOpacity>
+
+            <Text style={[styles.inputLabel, { marginTop: 18 }]}>LINK STATUS</Text>
+            {loadingLinks ? (
+              <ActivityIndicator color="#6200ee" style={{ marginVertical: 18 }} />
+            ) : myLinks.length === 0 ? (
+              <Text style={styles.copEmpty}>No link requests yet. Enter your parent's number above to send one.</Text>
             ) : (
               <ScrollView showsVerticalScrollIndicator={false}>
-                {copList.map((cop) => {
-                  const status = copLinkStatus[cop.id];
-                  return (
-                    <View key={cop.id} style={styles.copRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.copName}>{cop.fullName}</Text>
-                        <Text style={styles.copMeta}>
-                          {cop.profession || 'Secret Cop'} · {cop.status === 'LIVE' ? 'LIVE' : 'OFFLINE'}
-                        </Text>
-                      </View>
-                      {status === 'APPROVED' ? (
-                        <View style={[styles.copBadge, { backgroundColor: '#E8F5E9', borderColor: '#4CAF50' }]}>
-                          <Text style={[styles.copBadgeText, { color: '#2E7D32' }]}>LINKED</Text>
-                        </View>
-                      ) : status === 'PENDING' ? (
-                        <View style={[styles.copBadge, { backgroundColor: '#FFF8E1', borderColor: '#FFB300' }]}>
-                          <Text style={[styles.copBadgeText, { color: '#B26A00' }]}>SENT</Text>
-                        </View>
-                      ) : (
-                        <TouchableOpacity
-                          style={styles.copRequestBtn}
-                          onPress={() => sendCopRequest(cop.id)}
-                          disabled={requestingCopId === cop.id}
-                        >
-                          {requestingCopId === cop.id
-                            ? <ActivityIndicator size="small" color="#FFF" />
-                            : <Text style={styles.copRequestBtnText}>{status === 'REJECTED' ? 'RESEND' : 'LINK'}</Text>}
-                        </TouchableOpacity>
-                      )}
+                {myLinks.map((l) => (
+                  <View key={l.id} style={styles.copRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.copName}>{l.cop?.fullName || 'Parent'}</Text>
+                      <Text style={styles.copMeta}>Secret Cop · {l.createdAt ? new Date(l.createdAt).toLocaleDateString() : ''}</Text>
                     </View>
-                  );
-                })}
+                    {l.status === 'APPROVED' ? (
+                      <View style={[styles.copBadge, { backgroundColor: '#E8F5E9', borderColor: '#4CAF50' }]}>
+                        <Text style={[styles.copBadgeText, { color: '#2E7D32' }]}>LINKED</Text>
+                      </View>
+                    ) : l.status === 'PENDING' ? (
+                      <View style={[styles.copBadge, { backgroundColor: '#FFF8E1', borderColor: '#FFB300' }]}>
+                        <Text style={[styles.copBadgeText, { color: '#B26A00' }]}>WAITING</Text>
+                      </View>
+                    ) : (
+                      <View style={[styles.copBadge, { backgroundColor: '#FFEBEE', borderColor: '#EF5350' }]}>
+                        <Text style={[styles.copBadgeText, { color: '#C62828' }]}>REJECTED</Text>
+                      </View>
+                    )}
+                  </View>
+                ))}
               </ScrollView>
             )}
 

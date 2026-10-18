@@ -16,6 +16,7 @@ import { ThemeContext } from '../context/ThemeContext';
 import { LanguageContext } from '../context/LanguageContext';
 import api from '../utils/api';
 import { ensurePermission, PERMISSIONS } from '../utils/permissionHelper';
+import { getLocalRedZones } from '../database/localDb';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
@@ -104,6 +105,21 @@ function getLangVoice(lang) {
   return 'en-US';
 }
 
+// Emulators report a default US location — teleport to Sindhudurg so zone
+// checks work in the emulator (real phones in India never match this).
+function sanitizeCoords(latitude, longitude) {
+  if (latitude > 30 && latitude < 40 && longitude < -120) {
+    return { latitude: 16.0361, longitude: 73.5042 };
+  }
+  return { latitude, longitude };
+}
+
+function safeZoneMsg(lang) {
+  if (lang === 'mr') return 'तुम्ही सुरक्षित क्षेत्रात प्रवेश करत आहात. आणीबाणी मदत जवळ आहे.';
+  if (lang === 'hi') return 'आप सुरक्षित क्षेत्र में प्रवेश कर रहे हैं। आपातकालीन सहायता पास में है।';
+  return 'You are entering a safe zone. Emergency help is nearby.';
+}
+
 function buildVoiceMsg(zone, lang) {
   const type = zone.type || '';
   // Production zones keep their content in `crimeType` ("Deep Water", "sharp
@@ -165,6 +181,7 @@ export default function AINavigatorScreen({ route, navigation }) {
   const [isSearching, setIsSearching] = useState(false);
   const [isLoadingRoute, setIsLoadingRoute] = useState(false);
   const [activeAlertZone, setActiveAlertZone] = useState(null);
+  const [zonesError, setZonesError] = useState(false);
   const [eta, setEta] = useState(null);
   const [distance, setDistance] = useState(null);
   const [isRescue, setIsRescue] = useState(route.params?.rescueMission || false);
@@ -212,12 +229,9 @@ export default function AINavigatorScreen({ route, navigation }) {
     if (!hasLoc) return null;
 
     const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-    let coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-
-    // 🧪 EMULATOR FIX: If we are in America (default emulator location), jump to Sindhudurg
-    if (coords.latitude > 30 && coords.latitude < 40 && coords.longitude < -120) {
-       coords = { latitude: 16.0361, longitude: 73.5042 };
-       console.log('🧪 Emulator detected: Auto-teleporting to Sindhudurg');
+    const coords = sanitizeCoords(loc.coords.latitude, loc.coords.longitude);
+    if (coords.latitude !== loc.coords.latitude) {
+      console.log('🧪 Emulator detected: Auto-teleporting to Sindhudurg');
     }
 
     setCurrentLocation(coords);
@@ -226,10 +240,42 @@ export default function AINavigatorScreen({ route, navigation }) {
   };
 
   const fetchDangerZones = async () => {
+    setZonesError(false);
+    // 1. Public endpoint — works even with an expired/missing login token
+    try {
+      const res = await api.get('/safety/red-zones');
+      if (res.data.success && res.data.zones && res.data.zones.length > 0) {
+        setDangerZones(res.data.zones);
+        return;
+      }
+    } catch (e) { /* fall through */ }
+    // 2. Admin endpoint fallback
     try {
       const res = await api.get('/admin/red-zones');
-      if (res.data.success) setDangerZones(res.data.zones);
-    } catch (e) { console.warn('Danger zone load error'); }
+      if (res.data.success && res.data.zones && res.data.zones.length > 0) {
+        setDangerZones(res.data.zones);
+        return;
+      }
+    } catch (e) { /* fall through */ }
+    // 3. Offline: zones cached in local SQLite
+    try {
+      const local = await getLocalRedZones();
+      if (local && local.length > 0) {
+        setDangerZones(local.map(z => ({
+          id: z.id,
+          name: z.name,
+          latitude: parseFloat(z.latitude),
+          longitude: parseFloat(z.longitude),
+          radius: parseFloat(z.radius) || 300,
+          warningMessage: z.warning_message,
+          type: z.type,
+          startTime: z.start_time,
+          endTime: z.end_time
+        })));
+        return;
+      }
+    } catch (e) { /* fall through */ }
+    setZonesError(true);
   };
 
   const handleSearch = async () => {
@@ -336,7 +382,9 @@ export default function AINavigatorScreen({ route, navigation }) {
     Speech.speak(welcome, { language: getLangVoice(lang) });
 
     locationWatcher.current = await Location.watchPositionAsync({ accuracy: Location.Accuracy.High, timeInterval: 3000, distanceInterval: 10 }, (loc) => {
-      const pos = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+      // Emulator GPS fix must apply HERE too — otherwise the watcher keeps
+      // feeding US coordinates and zone detection never fires outside India.
+      const pos = sanitizeCoords(loc.coords.latitude, loc.coords.longitude);
       setCurrentLocation(pos);
       checkDangerRef.current && checkDangerRef.current(pos);
       mapRef.current?.animateToRegion({ ...pos, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 500);
@@ -359,22 +407,29 @@ export default function AINavigatorScreen({ route, navigation }) {
     const insideIds = new Set();
 
     dangerZones.forEach(zone => {
-      if (zone.type === 'SAFE_ZONE') return; // safe zones must never voice danger warnings
       const dist = getDistance(pos.latitude, pos.longitude, zone.latitude, zone.longitude);
-      if (dist <= (zone.radius || 300) && shouldAlert(zone)) {
-        insideIds.add(zone.id);
-        if (!alertedZones.current.has(zone.id)) {
-          alertedZones.current.add(zone.id);
-          setActiveAlertZone(zone);
-          // Preempt anything still speaking (SafetyMonitor runs on the
-          // dashboard underneath and calls Speech.stop() on its own alerts)
-          Speech.stop();
-          Speech.speak(buildVoiceMsg(zone, lang), { language: getLangVoice(lang) });
-          setTimeout(() => {
-            setActiveAlertZone(prev => (prev && prev.id === zone.id ? null : prev));
-          }, 8000);
-        }
+      if (dist > (zone.radius || 300)) return;
+      if (!shouldAlert(zone)) return;
+      insideIds.add(zone.id);
+      if (alertedZones.current.has(zone.id)) return;
+      alertedZones.current.add(zone.id);
+
+      if (zone.type === 'SAFE_ZONE') {
+        // Safe zones announce POSITIVELY (no red danger banner) — detection
+        // must never be silent, it just must not lie about danger.
+        Speech.stop();
+        Speech.speak(safeZoneMsg(lang), { language: getLangVoice(lang) });
+        return;
       }
+
+      setActiveAlertZone(zone);
+      // Preempt anything still speaking (SafetyMonitor runs on the
+      // dashboard underneath and calls Speech.stop() on its own alerts)
+      Speech.stop();
+      Speech.speak(buildVoiceMsg(zone, lang), { language: getLangVoice(lang) });
+      setTimeout(() => {
+        setActiveAlertZone(prev => (prev && prev.id === zone.id ? null : prev));
+      }, 8000);
     });
 
     // Re-arm ONLY after actually leaving the zone. The old code cleared the
@@ -485,6 +540,12 @@ export default function AINavigatorScreen({ route, navigation }) {
               </ScrollView>
             </View>
           )}
+          {zonesError && (
+            <TouchableOpacity onPress={fetchDangerZones} style={styles.zonesWarn}>
+              <AlertTriangle color="#FFF" size={14} />
+              <Text style={styles.zonesWarnText}>⚠ Danger zones failed to load — tap to retry</Text>
+            </TouchableOpacity>
+          )}
         </LinearGradient>
       </SafeAreaView>
 
@@ -540,6 +601,8 @@ const styles = StyleSheet.create({
   searchBtn: { backgroundColor: '#1E90FF', borderRadius: 14, width: 55, justifyContent: 'center', alignItems: 'center' },
   searchBtnText: { color: '#FFF', fontWeight: 'bold' },
   resultsContainer: { backgroundColor: '#FFF', borderRadius: 14, marginTop: 5, elevation: 8 },
+  zonesWarn: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(255,23,68,0.9)', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, marginTop: 8 },
+  zonesWarnText: { color: '#FFF', fontSize: 12, fontWeight: 'bold', flex: 1 },
   resultItem: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 10, borderBottomWidth: 1, borderBottomColor: '#F0F0F0' },
   resultText: { flex: 1, fontSize: 13, color: '#333' },
   alertBanner: { position: 'absolute', top: 160, left: 15, right: 15, zIndex: 20, borderRadius: 16, overflow: 'hidden' },
