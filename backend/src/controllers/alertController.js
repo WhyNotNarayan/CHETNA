@@ -127,12 +127,43 @@ exports.triggerSOS = async (req, res) => {
 
     const evidenceUrl = `${req.protocol}://${req.get('host')}/evidence/${evidenceToken}`;
 
+    // 6. Also notify the girl's APPROVED linked secret cops (beyond the 5 nearest)
+    let linkedCount = 0;
+    let linkedCopIds = [];
+    try {
+      const linked = await prisma.copLink.findMany({
+        where: { girlId: userId, status: 'APPROVED' },
+        include: { cop: { select: { id: true, pushToken: true } } }
+      });
+      for (const l of linked) {
+        if (!l.cop) continue;
+        linkedCopIds.push(l.cop.id);
+        if (nearestCops.some((c) => c.id === l.cop.id)) continue; // already in the nearest list
+        if (l.cop.pushToken) {
+          try {
+            await sendSecretCopAlert(l.cop.pushToken, victimName, {
+              alertId: alert.id,
+              latitude: parseFloat(latitude),
+              longitude: parseFloat(longitude),
+              linked: true
+            });
+            linkedCount++;
+          } catch (pushError) {
+            console.error('[Push] Failed to notify linked secret cop:', pushError.message);
+          }
+        }
+      }
+    } catch (linkError) {
+      console.error('[CopLink] Failed to notify linked cops:', linkError.message);
+    }
+
     res.status(201).json({
       success: true,
       alertId: alert.id,
       evidenceToken,
       evidenceUrl,
       notifiedCount: copsNotified || actualNotifiedCount,
+      linkedCopCount: linkedCount,
       nearestCops: nearestCops,
       message: 'SOS triggered and nearest helpers notified.'
     });
@@ -235,28 +266,63 @@ exports.getNearbyAlerts = async (req, res) => {
     }
     
     // Privacy: Select only necessary fields, omit evidence token
+    const alertSelect = {
+      id: true,
+      userId: true,
+      latitude: true,
+      longitude: true,
+      status: true,
+      triggerType: true,
+      voiceNote: true,
+      createdAt: true,
+      updatedAt: true,
+      user: {
+        select: { fullName: true }
+      }
+    };
+
     const alerts = await prisma.alert.findMany({
       where: { status: 'ACTIVE' },
-      select: {
-        id: true,
-        userId: true,
-        latitude: true,
-        longitude: true,
-        status: true,
-        triggerType: true,
-        voiceNote: true,
-        createdAt: true,
-        updatedAt: true,
-        user: {
-          select: { fullName: true }
-        }
-      },
+      select: alertSelect,
       orderBy: { createdAt: 'desc' },
       take: 5
     });
 
+    // Linked-cop guarantee: always surface active SOS from girls linked to this
+    // secret cop, even when they fall outside the latest-5 window.
+    let allAlerts = alerts;
+    try {
+      if (req.user?.role === 'SECRET_COP') {
+        const links = await prisma.copLink.findMany({
+          where: { copId: req.user.id, status: 'APPROVED' },
+          select: { girlId: true }
+        });
+        const linkedIds = links.map((l) => l.girlId);
+        if (linkedIds.length > 0) {
+          const knownIds = alerts.map((a) => a.id);
+          const extra = await prisma.alert.findMany({
+            where: {
+              status: 'ACTIVE',
+              userId: { in: linkedIds },
+              ...(knownIds.length > 0 ? { id: { notIn: knownIds } } : {})
+            },
+            select: alertSelect,
+            orderBy: { createdAt: 'desc' },
+            take: 5
+          });
+          if (extra.length > 0) {
+            allAlerts = [...alerts, ...extra]
+              .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+              .slice(0, 10);
+          }
+        }
+      }
+    } catch (linkError) {
+      console.error('[CopLink] Failed to load linked-girl alerts:', linkError.message);
+    }
+
     // Privacy: Only return first name to cops
-    const sanitizedAlerts = alerts.map(alert => {
+    const sanitizedAlerts = allAlerts.map(alert => {
       const firstName = alert.user?.fullName ? alert.user.fullName.split(' ')[0] : 'Girl';
       return {
         ...alert,

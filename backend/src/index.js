@@ -47,6 +47,7 @@ const adminRoutes = require('./routes/admin');
 const newsRoutes = require('./routes/news');
 const evidenceRoutes = require('./routes/evidence');
 const guardianRoutes = require('./routes/guardian');
+const copLinkRoutes = require('./routes/copLinks');
 
 // Use Routes
 app.use('/api/auth', authRoutes);
@@ -56,6 +57,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/news', newsRoutes);
 app.use('/evidence', evidenceRoutes);
 app.use('/api/guardian', guardianRoutes);
+app.use('/api/cop-links', copLinkRoutes);
 
 // Start Guardian Timer cron job
 const { startGuardianCron } = require('./services/guardianCron');

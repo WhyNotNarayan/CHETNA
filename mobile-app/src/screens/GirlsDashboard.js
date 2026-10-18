@@ -202,13 +202,12 @@ export default function GirlsDashboard({ navigation }) {
     }
   };
 
-  // Link Parent state
+  // Link Secret Cop state
   const [showLinkModal, setShowLinkModal] = useState(false);
-  const [parentName, setParentName] = useState('');
-  const [parentPhone, setParentPhone] = useState('');
-  const [parentRelation, setParentRelation] = useState('father');
-  const [parentSecondaryPhone, setParentSecondaryPhone] = useState('');
-  const [savingLink, setSavingLink] = useState(false);
+  const [copList, setCopList] = useState([]);
+  const [copLinkStatus, setCopLinkStatus] = useState({}); // copId -> PENDING | APPROVED | REJECTED
+  const [loadingCops, setLoadingCops] = useState(false);
+  const [requestingCopId, setRequestingCopId] = useState(null);
 
   useEffect(() => {
     const fetchNews = async () => {
@@ -231,16 +230,6 @@ export default function GirlsDashboard({ navigation }) {
     };
     if (userData?.id) refreshProfile();
   }, [userData?.id]);
-
-  useEffect(() => {
-    if (userData?.contacts && userData.contacts.length > 0) {
-      const parent = userData.contacts[0];
-      setParentName(parent.name || '');
-      setParentPhone(parent.phone || '');
-      setParentRelation(parent.relationship || 'father');
-      setParentSecondaryPhone(parent.secondaryPhone || '');
-    }
-  }, [userData]);
 
   const fetchMyEvidence = async () => {
     setEvidenceLoading(true);
@@ -335,24 +324,41 @@ export default function GirlsDashboard({ navigation }) {
     }
   };
 
-  const handleLinkParent = async () => {
-    if (!parentName || !parentPhone || !parentRelation) {
-      Alert.alert('Required Fields', 'Please fill Parent Name, Mobile and Relationship.');
-      return;
-    }
-    setSavingLink(true);
+  const openLinkModal = async () => {
+    setShowLinkModal(true);
+    setLoadingCops(true);
     try {
-      const res = await api.post('/auth/link-parent', {
-        name: parentName, phone: parentPhone, relationship: parentRelation, secondaryPhone: parentSecondaryPhone || null
-      });
-      if (res.data?.success) {
-        Alert.alert('Linked ✅', 'Parent linked successfully!');
-        setShowLinkModal(false);
+      const [copsRes, linksRes] = await Promise.all([
+        api.get('/admin/verified-secret-cops'),
+        api.get('/cop-links/my-links'),
+      ]);
+      if (copsRes.data?.success) setCopList(copsRes.data.users || []);
+      if (linksRes.data?.success) {
+        const map = {};
+        (linksRes.data.links || []).forEach((l) => {
+          if (l.copId) map[l.copId] = l.status;
+        });
+        setCopLinkStatus(map);
       }
-    } catch (err) {
-      Alert.alert('Link Failed', err.response?.data?.message || 'Failed to update parent details.');
+    } catch (e) {
+      Alert.alert('Error', 'Could not load secret cops. Please try again.');
     } finally {
-      setSavingLink(false);
+      setLoadingCops(false);
+    }
+  };
+
+  const sendCopRequest = async (copId) => {
+    setRequestingCopId(copId);
+    try {
+      const res = await api.post('/cop-links/request', { copId });
+      if (res.data?.success) {
+        setCopLinkStatus((prev) => ({ ...prev, [copId]: res.data.status || 'PENDING' }));
+        Alert.alert('Request Sent', res.data.message || 'Waiting for the secret cop to approve.');
+      }
+    } catch (e) {
+      Alert.alert('Request Failed', e.response?.data?.message || 'Could not send link request.');
+    } finally {
+      setRequestingCopId(null);
     }
   };
 
@@ -443,7 +449,7 @@ export default function GirlsDashboard({ navigation }) {
         <View style={[styles.actionsGrid, { marginBottom: 30, gap: 12 }]}>
           <ActionItem icon={<Navigation color="#6200ee" size={Math.min(width * 0.06, 22)} />} label="Safe Route" itemWidth={actionWidth} onPress={() => navigation.navigate('AINavigator')} />
           <ActionItem icon={<Newspaper color="#6200ee" size={Math.min(width * 0.06, 22)} />} label="Local News" itemWidth={actionWidth} />
-          <ActionItem icon={<Users color="#6200ee" size={Math.min(width * 0.06, 22)} />} label="Link Parent" itemWidth={actionWidth} onPress={() => setShowLinkModal(true)} />
+          <ActionItem icon={<Users color="#6200ee" size={Math.min(width * 0.06, 22)} />} label="Link Cop" itemWidth={actionWidth} onPress={openLinkModal} />
           <ActionItem icon={<Camera color="#6200ee" size={Math.min(width * 0.06, 22)} />} label="Evidence" itemWidth={actionWidth} onPress={async () => { const hasCam = await ensurePermission(PERMISSIONS.CAMERA); if (hasCam) setShowEvidencePasswordModal(true); }} />
         </View>
 
@@ -455,23 +461,57 @@ export default function GirlsDashboard({ navigation }) {
         </ScrollView>
       </ScrollView>
 
-      {/* Modals */}
+      {/* Link Secret Cop Modal */}
       <Modal visible={showLinkModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Link Parent/Guardian</Text>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Parent Name</Text>
-              <TextInput style={styles.input} placeholder="Name" value={parentName} onChangeText={setParentName} />
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Parent Mobile</Text>
-              <TextInput style={styles.input} placeholder="10-digit number" keyboardType="phone-pad" value={parentPhone} onChangeText={setParentPhone} />
-            </View>
-            <TouchableOpacity style={styles.saveBtn} onPress={handleLinkParent} disabled={savingLink}>
-              {savingLink ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>LINK NOW</Text>}
+          <View style={[styles.modalContent, { maxHeight: '80%' }]}>
+            <Text style={styles.modalTitle}>Link Secret Cop</Text>
+            <Text style={styles.modalSub}>Verified secret cops who get your SOS instantly.</Text>
+
+            {loadingCops ? (
+              <ActivityIndicator color="#6200ee" style={{ marginVertical: 25 }} />
+            ) : copList.length === 0 ? (
+              <Text style={styles.copEmpty}>No verified secret cops available yet.</Text>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {copList.map((cop) => {
+                  const status = copLinkStatus[cop.id];
+                  return (
+                    <View key={cop.id} style={styles.copRow}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.copName}>{cop.fullName}</Text>
+                        <Text style={styles.copMeta}>
+                          {cop.profession || 'Secret Cop'} · {cop.status === 'LIVE' ? 'LIVE' : 'OFFLINE'}
+                        </Text>
+                      </View>
+                      {status === 'APPROVED' ? (
+                        <View style={[styles.copBadge, { backgroundColor: '#E8F5E9', borderColor: '#4CAF50' }]}>
+                          <Text style={[styles.copBadgeText, { color: '#2E7D32' }]}>LINKED</Text>
+                        </View>
+                      ) : status === 'PENDING' ? (
+                        <View style={[styles.copBadge, { backgroundColor: '#FFF8E1', borderColor: '#FFB300' }]}>
+                          <Text style={[styles.copBadgeText, { color: '#B26A00' }]}>SENT</Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.copRequestBtn}
+                          onPress={() => sendCopRequest(cop.id)}
+                          disabled={requestingCopId === cop.id}
+                        >
+                          {requestingCopId === cop.id
+                            ? <ActivityIndicator size="small" color="#FFF" />
+                            : <Text style={styles.copRequestBtnText}>{status === 'REJECTED' ? 'RESEND' : 'LINK'}</Text>}
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+
+            <TouchableOpacity onPress={() => setShowLinkModal(false)}>
+              <Text style={styles.cancelTextLink}>Close</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowLinkModal(false)}><Text style={styles.cancelTextLink}>Cancel</Text></TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -679,6 +719,14 @@ const styles = StyleSheet.create({
   saveBtn: { height: 55, backgroundColor: '#6200ee', borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginTop: 10 },
   saveBtnText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
   cancelTextLink: { textAlign: 'center', color: '#999', fontSize: 14, marginTop: 15, fontWeight: 'bold' },
+  copRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F6F4FF', borderRadius: 14, padding: 12, marginBottom: 10, gap: 10 },
+  copName: { fontSize: 14, fontWeight: '700', color: '#333' },
+  copMeta: { fontSize: 12, color: '#777', marginTop: 2 },
+  copBadge: { borderRadius: 10, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 6 },
+  copBadgeText: { fontSize: 11, fontWeight: '900' },
+  copRequestBtn: { backgroundColor: '#6200ee', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9, minWidth: 64, alignItems: 'center' },
+  copRequestBtnText: { color: '#FFF', fontSize: 12, fontWeight: '900' },
+  copEmpty: { textAlign: 'center', color: '#888', fontSize: 13, marginVertical: 20 },
   dangerBanner: { marginHorizontal: 20, marginTop: 10, borderRadius: 15, overflow: 'hidden' },
   dangerGradient: { flexDirection: 'row', alignItems: 'center', padding: 15, gap: 12 },
   dangerTextContent: { flex: 1 },

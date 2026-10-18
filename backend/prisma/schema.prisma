@@ -47,6 +47,8 @@ model User {
   lastLocation  Location?
   gpsHistory    GpsHistory[]
   guardianSessions GuardianTimerSession[]
+  copLinksAsGirl CopLink[] @relation("CopLinkGirl")
+  copLinksAsCop  CopLink[] @relation("CopLinkCop")
 }
 
 model EmergencyContact {
@@ -58,6 +60,19 @@ model EmergencyContact {
   status         String   @default("PENDING") // PENDING, APPROVED, REJECTED
   userId         String
   user           User     @relation(fields: [userId], references: [id])
+}
+
+model CopLink {
+  id        String   @id @default(uuid())
+  girlId    String
+  copId     String
+  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  girl      User     @relation("CopLinkGirl", fields: [girlId], references: [id], onDelete: Cascade)
+  cop       User     @relation("CopLinkCop", fields: [copId], references: [id], onDelete: Cascade)
+
+  @@unique([girlId, copId])
 }
 
 model RedZone {

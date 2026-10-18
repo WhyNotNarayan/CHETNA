@@ -397,6 +397,10 @@ export default function BoysDashboard({ navigation }) {
   const [parentNotifications, setParentNotifications] = useState([]);
   const [pendingLinkRequests, setPendingLinkRequests] = useState([]);
   const [activeLinkPopup, setActiveLinkPopup] = useState(null);
+  // Girl → secret-cop link requests (CopLink)
+  const [copLinkRequests, setCopLinkRequests] = useState([]);
+  const [linkedGirls, setLinkedGirls] = useState([]);
+  const [respondingLinkId, setRespondingLinkId] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -510,6 +514,46 @@ export default function BoysDashboard({ navigation }) {
       }
     } catch (err) {
       Alert.alert("Error", err.response?.data?.message || "Failed to process link request.");
+    }
+  };
+
+  const fetchCopLinks = async () => {
+    if (userData?.role !== 'SECRET_COP') return;
+    try {
+      const [reqsRes, linksRes] = await Promise.all([
+        api.get('/cop-links/requests').catch(() => null),
+        api.get('/cop-links/my-links').catch(() => null)
+      ]);
+      if (reqsRes?.data?.success) setCopLinkRequests(reqsRes.data.requests || []);
+      if (linksRes?.data?.success) {
+        setLinkedGirls((linksRes.data.links || []).filter((l) => l.status === 'APPROVED'));
+      }
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    fetchCopLinks();
+    const interval = setInterval(fetchCopLinks, 30000);
+    return () => clearInterval(interval);
+  }, [userData?.role]);
+
+  const handleCopLinkRespond = async (linkId, action) => {
+    setRespondingLinkId(linkId);
+    try {
+      const res = await api.post('/cop-links/respond', { linkId, action });
+      if (res.data?.success) {
+        setCopLinkRequests((prev) => prev.filter((r) => r.id !== linkId));
+        if (action === 'APPROVED') {
+          const linksRes = await api.get('/cop-links/my-links').catch(() => null);
+          if (linksRes?.data?.success) {
+            setLinkedGirls((linksRes.data.links || []).filter((l) => l.status === 'APPROVED'));
+          }
+        }
+      }
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.message || 'Failed to process link request.');
+    } finally {
+      setRespondingLinkId(null);
     }
   };
 
@@ -1082,6 +1126,51 @@ export default function BoysDashboard({ navigation }) {
           <Text style={styles.rankLab}>AWARDS</Text>
         </View>
       </View>
+
+      {/* GIRL LINK REQUESTS + LINKED GIRLS (Secret Cop only) */}
+      {userData?.role === 'SECRET_COP' && (
+        <View style={[styles.rankHub, { backgroundColor: theme.card, borderColor: theme.border, flexDirection: 'column' }]}>
+          <Text style={[styles.hubTitle, { color: theme.subtext, marginBottom: 10 }]}>GIRL LINK REQUESTS</Text>
+          {copLinkRequests.length === 0 ? (
+            <Text style={{ color: theme.subtext, fontSize: 12, marginBottom: 12 }}>No pending requests</Text>
+          ) : (
+            copLinkRequests.map((req) => (
+              <View key={req.id} style={styles.copLinkRow}>
+                <Text style={[styles.copLinkName, { color: theme.text }]}>{req.girlName} wants to link</Text>
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <TouchableOpacity
+                    style={[styles.copLinkBtn, { backgroundColor: '#4CAF50' }]}
+                    onPress={() => handleCopLinkRespond(req.id, 'APPROVED')}
+                    disabled={respondingLinkId === req.id}
+                  >
+                    <Text style={styles.copLinkBtnText}>APPROVE</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.copLinkBtn, { backgroundColor: '#EF4444' }]}
+                    onPress={() => handleCopLinkRespond(req.id, 'REJECTED')}
+                    disabled={respondingLinkId === req.id}
+                  >
+                    <Text style={styles.copLinkBtnText}>REJECT</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+
+          <Text style={[styles.hubTitle, { color: theme.subtext, marginTop: 8, marginBottom: 10 }]}>
+            LINKED GIRLS ({linkedGirls.length})
+          </Text>
+          {linkedGirls.length === 0 ? (
+            <Text style={{ color: theme.subtext, fontSize: 12 }}>No linked girls yet</Text>
+          ) : (
+            linkedGirls.map((l) => (
+              <Text key={l.id} style={[styles.copLinkName, { color: theme.text, marginBottom: 6 }]}>
+                {l.girl?.fullName || 'Girl'}
+              </Text>
+            ))
+          )}
+        </View>
+      )}
 
       {/* 🏁 LEADERBOARD PREVIEW */}
       <TouchableOpacity 
@@ -1796,6 +1885,10 @@ const styles = StyleSheet.create({
 
   settingsHub: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 25 },
   hubTitle: { fontSize: 11, fontWeight: '900', color: '#8E8E8E', marginBottom: 15, letterSpacing: 1 },
+  copLinkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 8 },
+  copLinkName: { fontSize: 13, fontWeight: '700', flex: 1 },
+  copLinkBtn: { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 7 },
+  copLinkBtnText: { color: '#FFF', fontSize: 11, fontWeight: '900' },
   settingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 18 },
   settingIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#3B82F615', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   settingText: { flex: 1, fontSize: 14, fontWeight: '700' },
