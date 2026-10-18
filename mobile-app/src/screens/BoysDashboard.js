@@ -400,6 +400,7 @@ export default function BoysDashboard({ navigation }) {
   // Girl → secret-cop link requests (CopLink)
   const [copLinkRequests, setCopLinkRequests] = useState([]);
   const [linkedGirls, setLinkedGirls] = useState([]);
+  const [isSecretCop, setIsSecretCop] = useState(false);
   const [respondingLinkId, setRespondingLinkId] = useState(null);
 
   useEffect(() => {
@@ -518,15 +519,22 @@ export default function BoysDashboard({ navigation }) {
   };
 
   const fetchCopLinks = async () => {
-    if (userData?.role !== 'SECRET_COP') return;
+    // NOTE: don't gate on userData?.role — the JWT (and stored userData) keep the
+    // registration-time role until re-login, even after admin verification.
+    // The API itself is the source of truth: 200 = we're a secret cop, 403 = not.
     try {
-      const [reqsRes, linksRes] = await Promise.all([
-        api.get('/cop-links/requests').catch(() => null),
-        api.get('/cop-links/my-links').catch(() => null)
-      ]);
-      if (reqsRes?.data?.success) setCopLinkRequests(reqsRes.data.requests || []);
-      if (linksRes?.data?.success) {
-        setLinkedGirls((linksRes.data.links || []).filter((l) => l.status === 'APPROVED'));
+      const reqsRes = await api.get('/cop-links/requests').catch((e) => ({ error: e }));
+      if (reqsRes.error) {
+        if (reqsRes.error.response?.status === 403) setIsSecretCop(false);
+        return; // network error → keep last known state, retry next tick
+      }
+      if (reqsRes.data?.success) {
+        setIsSecretCop(true);
+        setCopLinkRequests(reqsRes.data.requests || []);
+        const linksRes = await api.get('/cop-links/my-links').catch(() => null);
+        if (linksRes?.data?.success) {
+          setLinkedGirls((linksRes.data.links || []).filter((l) => l.status === 'APPROVED'));
+        }
       }
     } catch (e) {}
   };
@@ -1128,7 +1136,7 @@ export default function BoysDashboard({ navigation }) {
       </View>
 
       {/* GIRL LINK REQUESTS + LINKED GIRLS (Secret Cop only) */}
-      {userData?.role === 'SECRET_COP' && (
+      {isSecretCop && (
         <View style={[styles.rankHub, { backgroundColor: theme.card, borderColor: theme.border, flexDirection: 'column' }]}>
           <Text style={[styles.hubTitle, { color: theme.subtext, marginBottom: 10 }]}>GIRL LINK REQUESTS</Text>
           {copLinkRequests.length === 0 ? (

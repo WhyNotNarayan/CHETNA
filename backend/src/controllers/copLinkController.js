@@ -3,14 +3,23 @@ const prisma = require('../lib/prisma');
 // Secret cops stay anonymous to girls — same format as the verified-cops map endpoint
 const anonCopName = (copId) => `Secret Cop #${String(copId).slice(-4)}`;
 
-const isGirl = (req) => req.user?.role === 'GIRL';
-const isSecretCop = (req) => req.user?.role === 'SECRET_COP';
+// Role checks read the DATABASE, not the JWT: a cop's token is signed at
+// registration time (role BOY) and only changes on re-login, but admin
+// verification flips the DB role immediately.
+const getDbRole = async (userId) => {
+  try {
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    return u?.role || null;
+  } catch (e) {
+    return null;
+  }
+};
 
 // Girl or cop: all links involving me (shaped per requester role for privacy)
 exports.getMyLinks = async (req, res) => {
   try {
     const me = req.user.id;
-    const role = req.user.role;
+    const role = await getDbRole(me);
 
     const links = await prisma.copLink.findMany({
       where: { OR: [{ girlId: me }, { copId: me }] },
@@ -48,7 +57,8 @@ exports.getMyLinks = async (req, res) => {
 // Girl → send a link request to a verified secret cop
 exports.requestLink = async (req, res) => {
   try {
-    if (!isGirl(req)) {
+    const role = await getDbRole(req.user.id);
+    if (role !== 'GIRL') {
       return res.status(403).json({ success: false, message: 'Only girls can send link requests.' });
     }
 
@@ -100,7 +110,8 @@ exports.requestLink = async (req, res) => {
 // Cop → pending requests addressed to me
 exports.getRequests = async (req, res) => {
   try {
-    if (!isSecretCop(req)) {
+    const role = await getDbRole(req.user.id);
+    if (role !== 'SECRET_COP') {
       return res.status(403).json({ success: false, message: 'Only secret cops can view link requests.' });
     }
 
@@ -128,7 +139,8 @@ exports.getRequests = async (req, res) => {
 // Cop → approve or reject a request (ownership enforced)
 exports.respondToRequest = async (req, res) => {
   try {
-    if (!isSecretCop(req)) {
+    const role = await getDbRole(req.user.id);
+    if (role !== 'SECRET_COP') {
       return res.status(403).json({ success: false, message: 'Only secret cops can respond to link requests.' });
     }
 
