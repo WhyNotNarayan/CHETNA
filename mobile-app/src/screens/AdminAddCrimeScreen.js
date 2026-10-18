@@ -29,6 +29,7 @@ import {
   Square
 } from 'lucide-react-native';
 import api from '../utils/api';
+import { normalizeTimeInput } from '../utils/time';
 import * as Location from 'expo-location';
 
 // Local database of major Sindhudurg areas for smart search
@@ -465,7 +466,7 @@ const AdminAddCrimeScreen = ({ navigation }) => {
                   placeholder="10:00 PM"
                   placeholderTextColor="#444"
                   value={startTime}
-                  onChangeText={setStartTime}
+                  onChangeText={(t) => setStartTime(normalizeTimeInput(t))}
                 />
               </View>
               <View style={[styles.inputWrapper, { flex: 1 }]}>
@@ -475,7 +476,7 @@ const AdminAddCrimeScreen = ({ navigation }) => {
                   placeholder="04:00 AM"
                   placeholderTextColor="#444"
                   value={endTime}
-                  onChangeText={setEndTime}
+                  onChangeText={(t) => setEndTime(normalizeTimeInput(t))}
                 />
               </View>
             </View>

@@ -1,14 +1,31 @@
 const prisma = require('../lib/prisma');
 const { findNearestSecretCops } = require('../utils/geo');
-const { sendParentAlert, sendBulkPushNotifications } = require('../utils/pushNotification');
+const { sendParentAlert, sendSecretCopAlert } = require('../utils/pushNotification');
 const crypto = require('crypto');
 
 exports.triggerSOS = async (req, res) => {
   try {
-    const { userId, latitude, longitude, voiceTrigger } = req.body;
+    const { userId, latitude, longitude, voiceTrigger, clientUuid } = req.body;
 
     if (!userId || !latitude || !longitude) {
       return res.status(400).json({ success: false, message: 'Missing required location data' });
+    }
+
+    // If clientUuid is provided (offline-synced SOS), check for duplicate
+    if (clientUuid) {
+      const existing = await prisma.alert.findUnique({ where: { id: clientUuid } });
+      if (existing) {
+        // Already created — return existing (prevents duplicates on retry)
+        return res.status(200).json({
+          success: true,
+          alertId: existing.id,
+          evidenceToken: existing.evidenceToken,
+          evidenceUrl: `${req.protocol}://${req.get('host')}/evidence/${existing.evidenceToken}`,
+          notifiedCount: 0,
+          nearestCops: [],
+          message: 'SOS already registered.'
+        });
+      }
     }
 
     // Generate secure token and expiry (24 hours)
@@ -18,6 +35,7 @@ exports.triggerSOS = async (req, res) => {
     // 1. Create the alert instance
     const alert = await prisma.alert.create({
       data: {
+        id: clientUuid || undefined,  // Use client UUID if provided (offline sync)
         userId,
         latitude: parseFloat(latitude),
         longitude: parseFloat(longitude),
@@ -83,7 +101,29 @@ exports.triggerSOS = async (req, res) => {
     const nearestCops = findNearestSecretCops(latitude, longitude, secretCops || [], 5) || [];
     const actualNotifiedCount = nearestCops.length;
 
-    // 5. (Future Scope) Send push notifications to nearestCops
+    // 5. Send push notifications to nearest Secret Cops
+    const victimName = userWithContacts?.fullName || 'Someone';
+    let copsNotified = 0;
+    for (const cop of nearestCops) {
+      try {
+        // Need to load the cop's pushToken (was not in the select above)
+        const copUser = await prisma.user.findUnique({
+          where: { id: cop.id },
+          select: { pushToken: true }
+        });
+        if (copUser && copUser.pushToken) {
+          await sendSecretCopAlert(copUser.pushToken, victimName, {
+            alertId: alert.id,
+            latitude: parseFloat(latitude),
+            longitude: parseFloat(longitude),
+            distanceKm: cop.distance
+          });
+          copsNotified++;
+        }
+      } catch (pushError) {
+        console.error('[Push] Failed to notify secret cop:', pushError.message);
+      }
+    }
 
     const evidenceUrl = `${req.protocol}://${req.get('host')}/evidence/${evidenceToken}`;
 
@@ -92,8 +132,8 @@ exports.triggerSOS = async (req, res) => {
       alertId: alert.id,
       evidenceToken,
       evidenceUrl,
-      notifiedCount: actualNotifiedCount,
-      nearestCops: nearestCops, // Keep this for legacy compatibility if needed
+      notifiedCount: copsNotified || actualNotifiedCount,
+      nearestCops: nearestCops,
       message: 'SOS triggered and nearest helpers notified.'
     });
   } catch (error) {

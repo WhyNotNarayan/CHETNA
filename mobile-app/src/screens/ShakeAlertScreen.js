@@ -106,12 +106,28 @@ export default function ShakeAlertScreen({ navigation, route }) {
 
     try {
       const coords = await getCurrentLocation();
-      const res = await api.post('/alerts/trigger', {
+      const payload = {
         userId: userData?.id,
         latitude: coords?.latitude || 0,
         longitude: coords?.longitude || 0,
-        voiceTrigger: false,
-      });
+        voiceTrigger: false
+      };
+
+      let res;
+      try {
+        res = await api.post('/alerts/trigger', payload);
+      } catch (networkErr) {
+        // Network failed → save offline
+        console.log('[SOS] Network failed, saving offline...');
+        const { saveSosOffline } = require('../utils/offlineSosService');
+        const clientUuid = await saveSosOffline(payload);
+        navigation.replace('SOSTracking', {
+          alertId: clientUuid,
+          isOffline: true
+        });
+        return;
+      }
+
       if (res.data.success) {
         setAlertSent(true);
         navigation.replace('SOSTracking', { alertId: res.data.alertId });

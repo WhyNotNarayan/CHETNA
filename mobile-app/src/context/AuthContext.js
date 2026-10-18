@@ -3,6 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { startLocationTracking, stopLocationTracking } from '../utils/locationService';
 import { registerBackgroundTasks, unregisterBackgroundTasks } from '../utils/backgroundService';
+import { startConnectivityMonitor, stopConnectivityMonitor } from '../utils/networkService';
+import { initOfflineSos, stopOfflineSos } from '../utils/offlineSosService';
 import api from '../utils/api';
 
 export const AuthContext = createContext();
@@ -23,6 +25,10 @@ export const AuthProvider = ({ children }) => {
       // START TRACKING ON LOGIN
       startLocationTracking().catch(e => console.log('Tracking Start Error:', e));
       registerBackgroundTasks().catch(e => console.log('Background Tasks Error:', e));
+
+      // START OFFLINE SOS SYNC + CONNECTIVITY MONITOR
+      startConnectivityMonitor();
+      initOfflineSos();
 
       // REGISTER PUSH TOKEN
       registerPushToken().catch(e => console.log('Push Token Error:', e));
@@ -50,6 +56,8 @@ export const AuthProvider = ({ children }) => {
       // STOP TRACKING ON LOGOUT
       stopLocationTracking().catch(e => console.log('Tracking Stop Error:', e));
       unregisterBackgroundTasks().catch(e => console.log('Background Tasks Stop Error:', e));
+      stopConnectivityMonitor();
+      stopOfflineSos();
     } catch (e) {
       console.warn("Failed to clear auth data", e);
     }
@@ -71,6 +79,10 @@ export const AuthProvider = ({ children }) => {
         startLocationTracking().catch(e => console.log('Tracking Resume Error:', e));
         registerBackgroundTasks().catch(e => console.log('Background Tasks Resume Error:', e));
         registerPushToken().catch(e => console.log('Push Token Resume Error:', e));
+
+        // RESUME OFFLINE SOS SYNC + CONNECTIVITY MONITOR
+        startConnectivityMonitor();
+        initOfflineSos();
       }
     } catch (e) {
       console.warn("Failed to load auth data", e);

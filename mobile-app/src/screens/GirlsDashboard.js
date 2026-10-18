@@ -12,6 +12,7 @@ import { AuthContext } from '../context/AuthContext';
 import { LanguageContext } from '../context/LanguageContext';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '../utils/api';
+import { saveSosOffline } from '../utils/offlineSosService';
 import { ensurePermission, PERMISSIONS } from '../utils/permissionHelper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -300,14 +301,29 @@ export default function GirlsDashboard({ navigation }) {
     try {
       console.log('--- SOS TRIGGER START ---');
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      const response = await api.post('/alerts/trigger', {
+      const payload = {
         userId: userData?.id,
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
         voiceTrigger: false
-      });
+      };
+
+      let response;
+      try {
+        response = await api.post('/alerts/trigger', payload);
+      } catch (networkErr) {
+        // Network failed → save offline
+        console.log('[SOS] Network failed, saving offline...');
+        const clientUuid = await saveSosOffline(payload);
+        navigation.navigate('SOSTracking', {
+          alertId: clientUuid,
+          isOffline: true
+        });
+        return;
+      }
+
       if (response.data?.success) {
-        navigation.navigate('SOSTracking', { 
+        navigation.navigate('SOSTracking', {
           alertId: response.data.alertId,
           evidenceUrl: response.data.evidenceUrl
         });

@@ -7,6 +7,7 @@ import * as Location from 'expo-location';
 import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../utils/api';
+import { saveSosOffline } from '../utils/offlineSosService';
 import { LanguageContext } from '../context/LanguageContext';
 
 const LISTEN_DURATION = 8000;
@@ -83,14 +84,30 @@ export function useVolumeSOS(navigation, userData) {
       }
 
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-
-      console.log('SOS: Sending alert to server...');
-      const response = await api.post('/alerts/trigger', {
+      const payload = {
         userId: userData?.id,
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
         voiceTrigger
-      });
+      };
+
+      let response;
+      try {
+        console.log('SOS: Sending alert to server...');
+        response = await api.post('/alerts/trigger', payload);
+      } catch (networkErr) {
+        // Network failed → save offline
+        console.log('[SOS] Network failed, saving offline...');
+        const clientUuid = await saveSosOffline(payload);
+        if (navigation) {
+          Speech.speak(tts().sent, { language: tts().voice });
+          navigation.navigate('SOSTracking', {
+            alertId: clientUuid,
+            isOffline: true
+          });
+        }
+        return;
+      }
 
       console.log('SOS: Server response:', response.data);
 

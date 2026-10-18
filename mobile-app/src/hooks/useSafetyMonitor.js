@@ -15,6 +15,9 @@ Notifications.setNotificationHandler({
   }),
 });
 
+// Track which zones the user is currently inside (persisted for exit detection)
+const ACTIVE_ZONES_KEY = 'active_zones_inside';
+
 const VOICE_ALERTS = {
   'SHARP_TURN': "Warning! Sharp turn ahead. Please slow down.",
   'DARK_AREA': "Warning! Low visibility area ahead. Stay alert.",
@@ -54,10 +57,14 @@ const NOTIF_TITLE = {
   hi: (name) => `सुरक्षा चेतावनी: ${name}`,
 };
 
-const NOTIF_BODY = {
-  en: (msg) => msg,
-  mr: (msg) => msg,
-  hi: (msg) => msg,
+const VOICE_EXIT_EN = "You have left the danger zone. This area is now safe.";
+const VOICE_EXIT_MR = "तुम्ही धोकादायक भागाबाहेर आलात. हा भाग आता सुरक्षित आहे.";
+const VOICE_EXIT_HI = "आप खतरनाक क्षेत्र से बाहर आ गए हैं। यह क्षेत्र अब सुरक्षित है।";
+
+const NOTIF_SAFE_EXIT = {
+  en: (name) => ({ title: `✅ Safe: ${name}`, body: VOICE_EXIT_EN }),
+  mr: (name) => ({ title: `✅ सुरक्षित: ${name}`, body: VOICE_EXIT_MR }),
+  hi: (name) => ({ title: `✅ सुरक्षित: ${name}`, body: VOICE_EXIT_HI }),
 };
 
 async function getLang() {
@@ -173,6 +180,9 @@ export function useSafetyMonitor(guardianTimer = null) {
     let activeZoneFound = null;
 
     for (const zone of zones) {
+      // Skip zones outside their active hours (e.g., night-only crime zones)
+      if (!isTimeInRange(zone.startTime, zone.endTime)) continue;
+
       const radius = zone.radius || 500;
       const dist = getDistance(latitude, longitude, zone.latitude, zone.longitude);
 
@@ -207,19 +217,43 @@ export function useSafetyMonitor(guardianTimer = null) {
       }
     }
 
+    // Exit detection: user was inside a zone but is now outside
+    const currentZoneId = activeZoneFound ? activeZoneFound.id : null;
+    const prevZoneId = lastZoneId.current;
+
+    if (prevZoneId && !currentZoneId) {
+      // User left the zone — send "area is safe" notification
+      const exitedZone = zones.find(z => z.id === prevZoneId);
+      if (exitedZone) {
+        const lang = langRef.current;
+        const exitMsg = lang === 'mr' ? VOICE_EXIT_MR : lang === 'hi' ? VOICE_EXIT_HI : VOICE_EXIT_EN;
+
+        Speech.stop();
+        Speech.speak(exitMsg, { language: getLangVoice(lang), rate: 0.9, pitch: 1.0 });
+
+        const exitNotifFn = NOTIF_SAFE_EXIT[lang] || NOTIF_SAFE_EXIT.en;
+        const exitNotif = exitNotifFn(exitedZone.name);
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: exitNotif.title,
+            body: exitNotif.body,
+            data: { zoneId: exitedZone.id, type: 'zone_exit' },
+            sound: true,
+          },
+          trigger: null,
+        });
+      }
+    }
+    lastZoneId.current = currentZoneId;
+
     setCurrentZone(activeZoneFound);
 
     if (guardianTimer) {
-      const currentZoneId = activeZoneFound ? (activeZoneFound.id || activeZoneFound.zoneId) : null;
-      const prevZoneId = lastZoneId.current;
-
       if (currentZoneId && !prevZoneId) {
         guardianTimer.startSession(activeZoneFound, latitude, longitude);
       } else if (!currentZoneId && prevZoneId) {
         guardianTimer.completeSession();
       }
-
-      lastZoneId.current = currentZoneId;
     }
   };
 

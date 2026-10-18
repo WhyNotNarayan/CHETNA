@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, Modal, TextInput, Alert, ActivityIndicator, Share, Dimensions } from 'react-native';
-import { Shield, Users, Clock, CheckCircle, XCircle, Share2, MapPin, Camera as CameraIcon } from 'lucide-react-native';
+import { Shield, Users, Clock, CheckCircle, XCircle, Share2, MapPin, Camera as CameraIcon, WifiOff, Upload, CloudUpload } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '../utils/api';
 import { AuthContext } from '../context/AuthContext';
@@ -8,11 +8,13 @@ import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo
 import { Audio } from 'expo-av';
 import * as Location from 'expo-location';
 import { queueLocation, queueMedia, attemptSync } from '../utils/offlineSync';
+import { saveEvidenceOffline, syncPendingSos, getSosStatus, onSosStatusChange } from '../utils/offlineSosService';
+import { isOnline, onConnectivityChange } from '../utils/networkService';
 
 const { width } = Dimensions.get('window');
 
 export default function SOSTrackingScreen({ route, navigation }) {
-  const { alertId, evidenceUrl } = route.params;
+  const { alertId, evidenceUrl, isOffline } = route.params;
   const { userData } = useContext(AuthContext);
 
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -25,14 +27,26 @@ export default function SOSTrackingScreen({ route, navigation }) {
   const [cancelling, setCancelling] = useState(false);
   const [elapsed, setElapsed] = useState('00:00');
 
+  // Offline sync status
+  const [syncStatus, setSyncStatus] = useState(isOffline ? 'pending' : 'synced');
+  const [isNetworkOnline, setIsNetworkOnline] = useState(isOnline());
+  const [serverAlertId, setServerAlertId] = useState(isOffline ? null : alertId);
+
   // Recording states
   const [isRecording, setIsRecording] = useState(false);
   const cameraRef = useRef(null);
   const isTracking = useRef(true);
 
   const fetchStats = async () => {
+    // If offline alert hasn't synced yet, don't try to fetch stats
+    if (isOffline && !serverAlertId) {
+      setLoading(false);
+      return;
+    }
+
     try {
-      const res = await api.get(`/alerts/stats/${alertId}`);
+      const id = serverAlertId || alertId;
+      const res = await api.get(`/alerts/stats/${id}`);
       if (res.data.success) {
         setStats(res.data);
         if (res.data.status === 'RESOLVED') {
@@ -47,6 +61,46 @@ export default function SOSTrackingScreen({ route, navigation }) {
       setLoading(false);
     }
   };
+
+  // Listen for sync status changes from offlineSosService
+  useEffect(() => {
+    if (!isOffline) return;
+
+    const unsubStatus = onSosStatusChange((changedAlertId, status) => {
+      if (changedAlertId === alertId) {
+        setSyncStatus(status);
+        if (status === 'synced') {
+          // Alert synced — get the server ID and start fetching stats
+          getSosStatus(alertId).then((local) => {
+            if (local?.serverAlertId) {
+              setServerAlertId(local.serverAlertId);
+            }
+          });
+        }
+      }
+    });
+
+    const unsubNetwork = onConnectivityChange((online) => {
+      setIsNetworkOnline(online);
+      if (online) {
+        // Network restored — trigger sync
+        syncPendingSos();
+      }
+    });
+
+    // Check current status on mount
+    getSosStatus(alertId).then((local) => {
+      if (local) {
+        setSyncStatus(local.syncStatus);
+        if (local.serverAlertId) setServerAlertId(local.serverAlertId);
+      }
+    });
+
+    return () => {
+      unsubStatus();
+      unsubNetwork();
+    };
+  }, [isOffline, alertId]);
 
   const stopAllTracking = () => {
     isTracking.current = false;
@@ -82,7 +136,12 @@ export default function SOSTrackingScreen({ route, navigation }) {
         if (video && video.uri) {
           // CRITICAL: Wait for file to be fully written to disk
           await waitForFileReady(video.uri);
-          await queueMedia(alertId, video.uri, 'VIDEO');
+          if (isOffline) {
+            // Save evidence offline (will sync when alert is synced)
+            await saveEvidenceOffline(alertId, video.uri, 'VIDEO');
+          } else {
+            await queueMedia(serverAlertId || alertId, video.uri, 'VIDEO');
+          }
         }
 
         // Add a small 2-second delay before restarting to allow hardware to reset
@@ -139,8 +198,12 @@ export default function SOSTrackingScreen({ route, navigation }) {
         audioRecording.current = null;
         console.log('[SOS] Audio clip finished:', uri);
         if (uri) {
-          await queueMedia(alertId, uri, 'AUDIO');
-          attemptSync();
+          if (isOffline) {
+            await saveEvidenceOffline(alertId, uri, 'AUDIO');
+          } else {
+            await queueMedia(serverAlertId || alertId, uri, 'AUDIO');
+            attemptSync();
+          }
         }
       }
 
@@ -167,7 +230,10 @@ export default function SOSTrackingScreen({ route, navigation }) {
 
     try {
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      await queueLocation(alertId, loc.coords.latitude, loc.coords.longitude);
+      const targetId = serverAlertId || alertId;
+      if (!isOffline || serverAlertId) {
+        await queueLocation(targetId, loc.coords.latitude, loc.coords.longitude);
+      }
     } catch (e) {
       console.log('Location update failed');
     }
@@ -190,14 +256,23 @@ export default function SOSTrackingScreen({ route, navigation }) {
     startContinuousAudio();
 
     const statsInterval = setInterval(fetchStats, 5000);
-    const syncInterval = setInterval(attemptSync, 15000); // Attempt sync every 15s
+    const syncInterval = setInterval(attemptSync, 15000);
+
+    // For offline alerts, also try syncing the SOS itself periodically
+    let offlineSyncInterval = null;
+    if (isOffline) {
+      offlineSyncInterval = setInterval(() => {
+        syncPendingSos();
+      }, 20000);
+    }
 
     return () => {
       stopAllTracking();
       clearInterval(statsInterval);
       clearInterval(syncInterval);
+      if (offlineSyncInterval) clearInterval(offlineSyncInterval);
     };
-  }, []);
+  }, [isOffline, serverAlertId]);
 
   useEffect(() => {
     if (!stats) return;
@@ -244,6 +319,42 @@ export default function SOSTrackingScreen({ route, navigation }) {
 
   if (loading) return <View style={styles.centered}><ActivityIndicator size="large" color="#FF4444" /></View>;
 
+  // Sync status banner content
+  const getSyncBanner = () => {
+    if (!isOffline && syncStatus === 'synced') return null;
+
+    const banners = {
+      pending: {
+        icon: <WifiOff size={18} color="#FFF" />,
+        bg: '#F59E0B',
+        text: '⚠️ SOS saved on phone — waiting for internet'
+      },
+      syncing: {
+        icon: <CloudUpload size={18} color="#FFF" />,
+        bg: '#3B82F6',
+        text: '🔄 Syncing SOS to server...'
+      },
+      synced: {
+        icon: <CheckCircle size={18} color="#FFF" />,
+        bg: '#10B981',
+        text: '✅ SOS sent to server — Secret Cops notified'
+      },
+      failed: {
+        icon: <XCircle size={18} color="#FFF" />,
+        bg: '#EF4444',
+        text: '❌ Sync failed — will retry automatically'
+      }
+    };
+
+    const banner = banners[syncStatus] || banners.pending;
+    return (
+      <View style={[styles.syncBanner, { backgroundColor: banner.bg }]}>
+        {banner.icon}
+        <Text style={styles.syncBannerText}>{banner.text}</Text>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <LinearGradient colors={['#FF4B2B', '#FF416C']} style={styles.header}>
@@ -254,6 +365,20 @@ export default function SOSTrackingScreen({ route, navigation }) {
         <Text style={styles.timerText}>{elapsed}</Text>
         <Text style={styles.timerSub}>Time since activation</Text>
       </LinearGradient>
+
+      {/* Offline/Sync Status Banner */}
+      {getSyncBanner()}
+
+      {/* Offline info card */}
+      {isOffline && (
+        <View style={styles.offlineInfoCard}>
+          <Text style={styles.offlineInfoTitle}>📱 Offline Mode</Text>
+          <Text style={styles.offlineInfoText}>
+            Your SOS is saved safely on this phone. Evidence is being recorded.
+            When internet is available, everything will be sent to Secret Cops automatically.
+          </Text>
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Continuous Camera Feed (Used for recording) */}
@@ -390,6 +515,11 @@ const styles = StyleSheet.create({
   cancelBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, height: 55, borderRadius: 15, borderWidth: 2, borderColor: '#FF4444' },
   cancelBtnText: { color: '#FF4444', fontWeight: '900' },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  syncBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 15 },
+  syncBannerText: { color: '#FFF', fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  offlineInfoCard: { margin: 15, marginBottom: 0, backgroundColor: '#FFFBEB', padding: 15, borderRadius: 15, borderWidth: 1, borderColor: '#FDE68A' },
+  offlineInfoTitle: { fontSize: 14, fontWeight: 'bold', color: '#92400E', marginBottom: 5 },
+  offlineInfoText: { fontSize: 12, color: '#78350F', lineHeight: 18 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', padding: 25 },
   modalContent: { backgroundColor: '#FFF', borderRadius: 25, padding: 30, alignItems: 'center' },
   modalTitle: { fontSize: 22, fontWeight: 'bold', marginBottom: 10 },

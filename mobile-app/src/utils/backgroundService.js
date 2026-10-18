@@ -5,6 +5,7 @@ import * as Notifications from 'expo-notifications';
 import * as Battery from 'expo-battery';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getLocalRedZones, saveRedZones } from '../database/localDb';
+import { isTimeInRange } from './time';
 import api from './api';
 
 const SAFETY_CHECK_TASK = 'background-safety-check';
@@ -20,35 +21,6 @@ function getDistance(lat1, lon1, lat2, lon2) {
       Math.cos((lat2 * Math.PI) / 180) *
       Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function isTimeInRange(startTime, endTime) {
-  if (!startTime || !endTime) return true;
-  try {
-    const parseTime = (timeStr) => {
-      const parts = timeStr.trim().split(' ');
-      if (parts.length < 2) return null;
-      const [time, period] = parts;
-      let [hours, minutes] = time.split(':').map(Number);
-      if (period.toUpperCase() === 'PM' && hours !== 12) hours += 12;
-      if (period.toUpperCase() === 'AM' && hours === 12) hours = 0;
-      return { hours, minutes };
-    };
-    const start = parseTime(startTime);
-    const end = parseTime(endTime);
-    if (!start || !end) return true;
-    const now = new Date();
-    const nowMins = now.getHours() * 60 + now.getMinutes();
-    const startMins = start.hours * 60 + start.minutes;
-    const endMins = end.hours * 60 + end.minutes;
-    if (startMins <= endMins) {
-      return nowMins >= startMins && nowMins <= endMins;
-    } else {
-      return nowMins >= startMins || nowMins <= endMins;
-    }
-  } catch (e) {
-    return true;
-  }
 }
 
 TaskManager.defineTask(SAFETY_CHECK_TASK, async () => {
@@ -89,6 +61,8 @@ TaskManager.defineTask(SAFETY_CHECK_TASK, async () => {
       return BackgroundFetch.Result.NoData;
     }
 
+    let foundZone = null;
+
     for (const zone of zones) {
       const zoneLat = parseFloat(zone.latitude);
       const zoneLng = parseFloat(zone.longitude);
@@ -99,6 +73,7 @@ TaskManager.defineTask(SAFETY_CHECK_TASK, async () => {
       const dist = getDistance(latitude, longitude, zoneLat, zoneLng);
 
       if (dist <= zoneRadius) {
+        foundZone = zone;
         let ln = 'en';
         try { ln = (await AsyncStorage.getItem('user_lang')) || 'en'; } catch {}
         const title = ln === 'mr' ? `⚠️ सुरक्षा इशारा: ${zone.name}` : ln === 'hi' ? `⚠️ सुरक्षा चेतावनी: ${zone.name}` : `⚠️ Safety Alert: ${zone.name}`;
@@ -123,10 +98,34 @@ TaskManager.defineTask(SAFETY_CHECK_TASK, async () => {
           await api.post('/safety/update-location', { latitude, longitude });
         } catch (e) {}
 
-        return BackgroundFetch.Result.NewData;
+        break;
       }
     }
 
+    // Exit detection: was in a zone, now outside → send safe notification
+    const prevZoneStr = await AsyncStorage.getItem('bg_active_zone_id');
+    const currentZoneId = foundZone ? String(foundZone.id) : '';
+    if (prevZoneStr && prevZoneStr !== currentZoneId) {
+      const exitKey = `bg_zone_exit_${prevZoneStr}`;
+      const lastExit = await AsyncStorage.getItem(exitKey);
+      if (!lastExit || (now - parseInt(lastExit)) > 120000) {
+        const exited = zones.find(z => String(z.id) === prevZoneStr);
+        if (exited) {
+          let ln = 'en';
+          try { ln = (await AsyncStorage.getItem('user_lang')) || 'en'; } catch {}
+          const title = ln === 'mr' ? `✅ सुरक्षित: ${exited.name}` : ln === 'hi' ? `✅ सुरक्षित: ${exited.name}` : `✅ Safe: ${exited.name}`;
+          const body = ln === 'mr' ? 'तुम्ही धोकादायक भागाबाहेर आलात. हा भाग आता सुरक्षित आहे.' : ln === 'hi' ? 'आप खतरनाक क्षेत्र से बाहर आ गए हैं। यह क्षेत्र अब सुरक्षित है।' : 'You have left the danger zone. This area is now safe.';
+          await Notifications.scheduleNotificationAsync({
+            content: { title, body, data: { zoneId: exited.id, type: 'bg_zone_exit' }, sound: true },
+            trigger: null,
+          });
+          await AsyncStorage.setItem(exitKey, String(now));
+        }
+      }
+    }
+    await AsyncStorage.setItem('bg_active_zone_id', currentZoneId);
+
+    if (foundZone) return BackgroundFetch.Result.NewData;
     return BackgroundFetch.Result.NoData;
   } catch (error) {
     console.error('Background safety check error:', error);

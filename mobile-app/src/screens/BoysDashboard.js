@@ -65,6 +65,8 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { LinearGradient } from 'expo-linear-gradient';
 import { AuthContext } from '../context/AuthContext';
 import api from '../utils/api';
+import { saveSosOffline } from '../utils/offlineSosService';
+import { normalizeTimeInput } from '../utils/time';
 import { LanguageContext } from '../context/LanguageContext';
 import { ThemeContext } from '../context/ThemeContext';
 import { useSafetyMonitor } from '../hooks/useSafetyMonitor';
@@ -281,8 +283,8 @@ export default function BoysDashboard({ navigation }) {
   const [selectedPoint, setSelectedPoint] = useState(null);
   const [recordedPath, setRecordedPath] = useState([]); // Array of {lat, lng}
   const [isRecording, setIsRecording] = useState(false);
-  const [startTime, setStartTime] = useState('18:00');
-  const [endTime, setEndTime] = useState('06:00');
+  const [startTime, setStartTime] = useState('6:00 PM');
+  const [endTime, setEndTime] = useState('6:00 AM');
   const [caseCount, setCaseCount] = useState('0');
   const [selectedTags, setSelectedTags] = useState([]);
   const [mapRegion, setMapRegion] = useState({
@@ -527,12 +529,26 @@ export default function BoysDashboard({ navigation }) {
       const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       console.log('Location captured:', location.coords.latitude, location.coords.longitude);
 
-      const response = await api.post('/alerts/trigger', {
+      const payload = {
         userId: userData?.id,
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
         voiceTrigger: false
-      });
+      };
+
+      let response;
+      try {
+        response = await api.post('/alerts/trigger', payload);
+      } catch (networkErr) {
+        // Network failed → save offline
+        console.log('[SOS] Network failed, saving offline...');
+        const clientUuid = await saveSosOffline(payload);
+        navigation.navigate('SOSTracking', {
+          alertId: clientUuid,
+          isOffline: true
+        });
+        return;
+      }
 
       console.log('Server Response:', response.data);
 
@@ -1459,10 +1475,10 @@ export default function BoysDashboard({ navigation }) {
                     <Clock size={16} color={theme.primary} />
                     <TextInput
                       style={[styles.timeInput, { color: theme.text }]}
-                      placeholder="10 PM"
+                      placeholder="6:00 PM"
                       placeholderTextColor={theme.subtext}
                       value={startTime}
-                      onChangeText={setStartTime}
+                      onChangeText={(t) => setStartTime(normalizeTimeInput(t))}
                     />
                   </View>
                   <Text style={{ color: theme.subtext, fontWeight: 'bold' }}>-</Text>
@@ -1470,10 +1486,10 @@ export default function BoysDashboard({ navigation }) {
                     <Clock size={16} color={theme.primary} />
                     <TextInput
                       style={[styles.timeInput, { color: theme.text }]}
-                      placeholder="4 AM"
+                      placeholder="6:00 AM"
                       placeholderTextColor={theme.subtext}
                       value={endTime}
-                      onChangeText={setEndTime}
+                      onChangeText={(t) => setEndTime(normalizeTimeInput(t))}
                     />
                   </View>
                 </View>

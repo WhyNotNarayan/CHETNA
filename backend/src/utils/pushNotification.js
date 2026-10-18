@@ -121,3 +121,27 @@ exports.sendParentAlert = async (parentPushToken, daughterName, alertType, extra
     { alertType, daughterName, ...extraData }
   );
 };
+
+/**
+ * Send push notification to a nearby Secret Cop about an SOS alert.
+ * @param {string} copPushToken - Secret Cop's push token
+ * @param {string} victimName - Name of the person who triggered SOS
+ * @param {object} alertData - { alertId, latitude, longitude, distanceKm }
+ */
+exports.sendSecretCopAlert = async (copPushToken, victimName, alertData = {}) => {
+  const { latitude, longitude, distanceKm } = alertData;
+  const distText = distanceKm != null ? ` (~${distanceKm.toFixed(1)} km away)` : '';
+
+  return exports.sendPushNotification(
+    copPushToken,
+    `🚨 SOS Alert${distText} — ${victimName}`,
+    `${victimName} has triggered an emergency SOS${distText}. Location: ${latitude?.toFixed(4)}, ${longitude?.toFixed(4)}. Tap to respond.`,
+    {
+      type: 'SOS_SECRET_COP',
+      alertId: alertData.alertId,
+      latitude,
+      longitude,
+      distanceKm
+    }
+  );
+};
