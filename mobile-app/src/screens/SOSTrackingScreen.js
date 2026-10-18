@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, Modal, TextInput, Alert, ActivityIndicator, Share, Dimensions, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ScrollView, Modal, TextInput, Alert, ActivityIndicator, Share, Dimensions, Linking, AppState } from 'react-native';
 import { Shield, Users, Clock, CheckCircle, XCircle, Share2, MapPin, Camera as CameraIcon, WifiOff, Upload, CloudUpload } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import api from '../utils/api';
 import { AuthContext } from '../context/AuthContext';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Location from 'expo-location';
 import { queueLocation, queueMedia, attemptSync } from '../utils/offlineSync';
 import { saveEvidenceOffline, syncPendingSos, getSosStatus, onSosStatusChange } from '../utils/offlineSosService';
@@ -35,6 +36,8 @@ export default function SOSTrackingScreen({ route, navigation }) {
   // Recording states
   const [isRecording, setIsRecording] = useState(false);
   const cameraRef = useRef(null);
+  const [cameraKey, setCameraKey] = useState(0); // bump to force-remount a dead camera
+  const consecutiveVideoErrors = useRef(0);
   const isTracking = useRef(true);
   const videoLoopRef = useRef(false);
   const isRecordingRef = useRef(false);
@@ -52,7 +55,7 @@ export default function SOSTrackingScreen({ route, navigation }) {
   const [evLog, setEvLog] = useState([]);
   const pushLog = (msg) => {
     const t = new Date().toLocaleTimeString();
-    setEvLog(prev => [`${t}  ${msg}`, ...prev].slice(0, 5));
+    setEvLog(prev => [`${t}  ${msg}`, ...prev].slice(0, 8));
   };
 
   // ── Mic mutex ─────────────────────────────────────────────
@@ -170,15 +173,18 @@ export default function SOSTrackingScreen({ route, navigation }) {
 
   // Continuous Video Recording Loop
   //
-  // Runs as ONE guarded while-loop (started from the mount effect and from
-  // onCameraReady — whichever comes first). Two bugs are fixed here:
-  //  1. expo-camera's `maxDuration` is not reliably enforced on every
-  //     platform — if recordAsync() never resolves, NO clip is ever saved and
-  //     the whole evidence pipeline stalls. A hard stop timer guarantees the
-  //     promise resolves and clips rotate every ~28s.
-  //  2. The old recursive setTimeout version died permanently when the mount
-  //     effect re-ran (offline alert finished syncing) because onCameraReady
-  //     only fires once while the camera stays mounted.
+  // Hardened against every way Android video recording can silently die
+  // (verified against expo-camera's native ExpoCameraView.kt):
+  //  1. `recordAsync()` can REJECT every cycle if the mic is still held by
+  //     expo-av or the CameraX recorder went stale → self-heal by remounting
+  //     the CameraView after 3 consecutive failures.
+  //  2. The native promise only resolves on VideoRecordEvent.Finalize — if
+  //     Finalize never fires, the old code awaited FOREVER (loop frozen, mic
+  //     held, audio starved). A 35s watchdog now forces a stop.
+  //  3. recordAsync() returns undefined (no crash) when the inner native ref
+  //     isn't attached — detected and logged instead of silently skipping.
+  //  4. A stale 28s stopTimer used to leak on the error path and kill the
+  //     NEXT clip early — timers are now always cleared.
   const startContinuousVideo = async () => {
     if (videoLoopRef.current || !isTracking.current) return;
     videoLoopRef.current = true;
@@ -200,8 +206,11 @@ export default function SOSTrackingScreen({ route, navigation }) {
       if (!(await acquireMic('video'))) break;
 
       let video = null;
+      let stopTimer = null;
+      let watchdogTimer = null;
       try {
         console.log('[SOS] Starting video clip...');
+        pushLog('🎥 Starting video clip…');
         setIsRecording(true);
         isRecordingRef.current = true;
 
@@ -209,25 +218,59 @@ export default function SOSTrackingScreen({ route, navigation }) {
           maxDuration: 28,
           videoQuality: '480p',
         });
-        const stopTimer = setTimeout(() => {
+
+        if (!recPromise || typeof recPromise.then !== 'function') {
+          pushLog('⚠ Camera not ready for recording — retrying');
+          throw new Error('Camera not ready (no recording promise)');
+        }
+
+        // Soft stop at 28s + hard watchdog at 35s (Finalize must fire)
+        stopTimer = setTimeout(() => {
           try { cameraRef.current?.stopRecording(); } catch (e) {}
         }, 28000);
-        video = await recPromise;
-        clearTimeout(stopTimer);
-        console.log('[SOS] Video clip finished:', video?.uri);
+        const TIMEOUT = '__TIMEOUT__';
+        video = await Promise.race([
+          recPromise,
+          new Promise((res) => { watchdogTimer = setTimeout(() => res(TIMEOUT), 35000); }),
+        ]);
+        if (video === TIMEOUT) {
+          video = null;
+          recPromise.catch(() => {}); // swallow the late native settle
+          try { cameraRef.current?.stopRecording(); } catch (e) {}
+          throw new Error('Recording hung (no finalize event) — camera restarted');
+        }
+        if (!video || !video.uri) throw new Error('Camera returned no file');
+        console.log('[SOS] Video clip finished:', video.uri);
       } catch (err) {
         console.error('[SOS] Video recording error:', err.message);
         pushLog(`❌ Video error: ${err.message}`);
+        consecutiveVideoErrors.current += 1;
+        if (consecutiveVideoErrors.current >= 3) {
+          consecutiveVideoErrors.current = 0;
+          pushLog('🔄 Camera unresponsive — remounting…');
+          try { cameraRef.current?.stopRecording(); } catch (e) {}
+          setCameraKey((k) => k + 1); // force fresh native camera + recorder
+          await sleep(2500);
+        }
       } finally {
+        if (stopTimer) clearTimeout(stopTimer);
+        if (watchdogTimer) clearTimeout(watchdogTimer);
         releaseMic('video');
         setIsRecording(false);
         isRecordingRef.current = false;
       }
 
       if (video && video.uri) {
+        consecutiveVideoErrors.current = 0;
         try {
           // CRITICAL: Wait for file to be fully written to disk
           await waitForFileReady(video.uri);
+          let sizeNote = '';
+          try {
+            const info = await FileSystem.getInfoAsync(video.uri);
+            if (info.exists) sizeNote = ` (${(info.size / (1024 * 1024)).toFixed(1)} MB)`;
+          } catch (e) {}
+          pushLog(`📼 Clip ready${sizeNote} — uploading…`);
           if (isOffline) {
             await saveEvidenceOffline(alertId, video.uri, 'VIDEO');
             pushLog('📴 Video clip saved on phone (offline queue)');
@@ -289,6 +332,9 @@ export default function SOSTrackingScreen({ route, navigation }) {
           await audioRecording.current.stopAndUnloadAsync();
           const uri = audioRecording.current.getURI();
           audioRecording.current = null;
+          // Free the mic BEFORE the slow upload so the video loop can start
+          // its next clip while this audio file is still being sent.
+          releaseMic('audio');
           console.log('[SOS] Audio clip finished:', uri);
           if (uri) {
             if (isOffline) {
@@ -370,6 +416,20 @@ export default function SOSTrackingScreen({ route, navigation }) {
       if (offlineSyncInterval) clearInterval(offlineSyncInterval);
     };
   }, [isOffline, serverAlertId]);
+
+  // Android releases the camera when the app is backgrounded (pocket, screen
+  // off). On return, resume the preview and kick the video loop in case it
+  // stalled while backgrounded.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && isTracking.current) {
+        pushLog('📱 App foregrounded — resuming camera');
+        try { cameraRef.current?.resumePreview?.(); } catch (e) {}
+        startContinuousVideo(); // guarded — no-op if the loop is already alive
+      }
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     if (!stats) return;
@@ -481,6 +541,7 @@ export default function SOSTrackingScreen({ route, navigation }) {
         {/* Continuous Camera Feed (Used for recording) */}
         <View style={styles.cameraContainer}>
           <CameraView
+            key={cameraKey}
             ref={cameraRef}
             style={styles.camera}
             facing="back"
@@ -489,6 +550,10 @@ export default function SOSTrackingScreen({ route, navigation }) {
               console.log('[SOS] Camera Ready. Starting loop...');
               pushLog('📷 Camera ready');
               startContinuousVideo();
+            }}
+            onMountError={(e) => {
+              pushLog(`❌ Camera mount error: ${e?.message || 'unknown'}`);
+              setCameraKey((k) => k + 1);
             }}
           />
           <View style={styles.recBadge}>
