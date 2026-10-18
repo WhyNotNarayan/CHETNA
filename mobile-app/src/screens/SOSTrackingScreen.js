@@ -36,6 +36,17 @@ export default function SOSTrackingScreen({ route, navigation }) {
   const [isRecording, setIsRecording] = useState(false);
   const cameraRef = useRef(null);
   const isTracking = useRef(true);
+  const videoLoopRef = useRef(false);
+  const isRecordingRef = useRef(false);
+  // Permissions resolved asynchronously — the loops must read the CURRENT
+  // value via ref, not a stale closure from the render that started them.
+  const permRef = useRef({ camera: false, mic: false });
+
+  useEffect(() => {
+    permRef.current = { camera: !!cameraPermission?.granted, mic: !!micPermission?.granted };
+  }, [cameraPermission?.granted, micPermission?.granted]);
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   const fetchStats = async () => {
     // If offline alert hasn't synced yet, don't try to fetch stats
@@ -104,61 +115,93 @@ export default function SOSTrackingScreen({ route, navigation }) {
 
   const stopAllTracking = () => {
     isTracking.current = false;
-    if (cameraRef.current && isRecording) {
-      cameraRef.current.stopRecording();
+    if (cameraRef.current && isRecordingRef.current) {
+      try { cameraRef.current.stopRecording(); } catch (e) {}
     }
-    if (audioRecording.current) {
-      audioRecording.current.stopAndUnloadAsync().catch(() => {});
+    const activeAudio = audioRecording.current;
+    if (activeAudio) {
       audioRecording.current = null;
+      // Save the PARTIAL in-progress clip instead of discarding it — it is
+      // evidence of the incident up to the moment SOS stopped.
+      (async () => {
+        try {
+          await activeAudio.stopAndUnloadAsync();
+          const uri = activeAudio.getURI();
+          console.log('[SOS] Partial audio preserved:', uri);
+          if (uri) {
+            if (isOffline) await saveEvidenceOffline(alertId, uri, 'AUDIO');
+            else await queueMedia(serverAlertId || alertId, uri, 'AUDIO');
+          }
+        } catch (e) {}
+      })();
     }
     Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
+    // Flush any evidence/locations still sitting in the upload queue
+    attemptSync().catch(() => {});
   };
 
   // Continuous Video Recording Loop
+  //
+  // Runs as ONE guarded while-loop (started from the mount effect and from
+  // onCameraReady — whichever comes first). Two bugs are fixed here:
+  //  1. expo-camera's `maxDuration` is not reliably enforced on every
+  //     platform — if recordAsync() never resolves, NO clip is ever saved and
+  //     the whole evidence pipeline stalls. A hard stop timer guarantees the
+  //     promise resolves and clips rotate every ~28s.
+  //  2. The old recursive setTimeout version died permanently when the mount
+  //     effect re-ran (offline alert finished syncing) because onCameraReady
+  //     only fires once while the camera stays mounted.
   const startContinuousVideo = async () => {
-    if (!isTracking.current) return;
-    
-    if (cameraRef.current && cameraPermission?.granted && micPermission?.granted) {
+    if (videoLoopRef.current || !isTracking.current) return;
+    videoLoopRef.current = true;
+
+    while (isTracking.current) {
+      if (!cameraRef.current || !permRef.current.camera || !permRef.current.mic) {
+        console.log('[SOS] Camera or Mic permission not granted, or ref missing');
+        await sleep(2000);
+        continue;
+      }
+
       try {
         console.log('[SOS] Starting video clip...');
         setIsRecording(true);
+        isRecordingRef.current = true;
 
-        const video = await cameraRef.current.recordAsync({
-          maxDuration: 28, // Use slightly less than 30 to be safe
+        const recPromise = cameraRef.current.recordAsync({
+          maxDuration: 28,
           videoQuality: '480p',
-          // Note: expo-camera recordAsync doesn't expose muxer options directly
-          // The output is typically fragmented MP4 which needs remuxing for browser playback
         });
+        const stopTimer = setTimeout(() => {
+          try { cameraRef.current?.stopRecording(); } catch (e) {}
+        }, 28000);
+        const video = await recPromise;
+        clearTimeout(stopTimer);
 
-        console.log('[SOS] Video clip finished:', video.uri);
+        console.log('[SOS] Video clip finished:', video?.uri);
         setIsRecording(false);
+        isRecordingRef.current = false;
 
         if (video && video.uri) {
           // CRITICAL: Wait for file to be fully written to disk
           await waitForFileReady(video.uri);
           if (isOffline) {
-            // Save evidence offline (will sync when alert is synced)
             await saveEvidenceOffline(alertId, video.uri, 'VIDEO');
           } else {
             await queueMedia(serverAlertId || alertId, video.uri, 'VIDEO');
           }
         }
 
-        // Add a small 2-second delay before restarting to allow hardware to reset
-        if (isTracking.current) {
-          setTimeout(startContinuousVideo, 2000);
-        }
+        if (isTracking.current) await sleep(2000);
       } catch (err) {
         console.error('[SOS] Video recording error:', err.message);
         setIsRecording(false);
-        if (isTracking.current) {
-          setTimeout(startContinuousVideo, 5000);
-        }
+        isRecordingRef.current = false;
+        if (isTracking.current) await sleep(5000);
       }
-    } else {
-      console.log('[SOS] Camera or Mic permission not granted, or ref missing');
-      setTimeout(startContinuousVideo, 2000);
     }
+
+    videoLoopRef.current = false;
+    console.log('[SOS] Video loop stopped');
   };
 
   // Ensure file is fully written before uploading
@@ -172,56 +215,57 @@ export default function SOSTrackingScreen({ route, navigation }) {
 
   // Continuous Audio Recording Loop
   const audioRecording = useRef(null);
+  const audioLoopRef = useRef(false);
 
   const startContinuousAudio = async () => {
-    if (!isTracking.current) return;
+    if (audioLoopRef.current || !isTracking.current) return;
+    audioLoopRef.current = true;
 
-    try {
-      console.log('[SOS] Starting 30s audio clip...');
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
+    while (isTracking.current) {
+      try {
+        console.log('[SOS] Starting 30s audio clip...');
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: true,
+          playsInSilentModeIOS: true,
+        });
 
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
+        const { recording } = await Audio.Recording.createAsync(
+          Audio.RecordingOptionsPresets.HIGH_QUALITY
+        );
 
-      audioRecording.current = recording;
+        audioRecording.current = recording;
 
-      // Record for 30 seconds
-      await new Promise(resolve => setTimeout(resolve, 30000));
+        // Record for 30 seconds
+        await sleep(30000);
 
-      if (audioRecording.current) {
-        await audioRecording.current.stopAndUnloadAsync();
-        const uri = audioRecording.current.getURI();
-        audioRecording.current = null;
-        console.log('[SOS] Audio clip finished:', uri);
-        if (uri) {
-          if (isOffline) {
-            await saveEvidenceOffline(alertId, uri, 'AUDIO');
-          } else {
-            await queueMedia(serverAlertId || alertId, uri, 'AUDIO');
-            attemptSync();
+        if (audioRecording.current) {
+          await audioRecording.current.stopAndUnloadAsync();
+          const uri = audioRecording.current.getURI();
+          audioRecording.current = null;
+          console.log('[SOS] Audio clip finished:', uri);
+          if (uri) {
+            if (isOffline) {
+              await saveEvidenceOffline(alertId, uri, 'AUDIO');
+            } else {
+              await queueMedia(serverAlertId || alertId, uri, 'AUDIO');
+              attemptSync();
+            }
           }
         }
-      }
 
-      // Release audio session before next recording
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-      await new Promise(r => setTimeout(r, 1000));
-
-      if (isTracking.current) {
-        startContinuousAudio();
-      }
-    } catch (err) {
-      console.error('[SOS] Audio recording error:', err.message);
-      audioRecording.current = null;
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
-      if (isTracking.current) {
-        setTimeout(startContinuousAudio, 5000);
+        // Release audio session before next recording
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+        if (isTracking.current) await sleep(1000);
+      } catch (err) {
+        console.error('[SOS] Audio recording error:', err.message);
+        audioRecording.current = null;
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false }).catch(() => {});
+        if (isTracking.current) await sleep(5000);
       }
     }
+
+    audioLoopRef.current = false;
+    console.log('[SOS] Audio loop stopped');
   };
 
   // Location Tracking Loop
@@ -254,6 +298,7 @@ export default function SOSTrackingScreen({ route, navigation }) {
     fetchStats();
     startLocationLoop();
     startContinuousAudio();
+    startContinuousVideo(); // guarded — onCameraReady may have already started it
 
     const statsInterval = setInterval(fetchStats, 5000);
     const syncInterval = setInterval(attemptSync, 15000);

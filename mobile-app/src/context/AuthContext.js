@@ -5,6 +5,7 @@ import { startLocationTracking, stopLocationTracking } from '../utils/locationSe
 import { registerBackgroundTasks, unregisterBackgroundTasks } from '../utils/backgroundService';
 import { startConnectivityMonitor, stopConnectivityMonitor } from '../utils/networkService';
 import { initOfflineSos, stopOfflineSos } from '../utils/offlineSosService';
+import { initOfflineSync } from '../utils/offlineSync';
 import api from '../utils/api';
 
 export const AuthContext = createContext();
@@ -29,6 +30,7 @@ export const AuthProvider = ({ children }) => {
       // START OFFLINE SOS SYNC + CONNECTIVITY MONITOR
       startConnectivityMonitor();
       initOfflineSos();
+      initOfflineSync(); // flush any evidence files stuck in the upload queue
 
       // REGISTER PUSH TOKEN
       registerPushToken().catch(e => console.log('Push Token Error:', e));
@@ -83,6 +85,7 @@ export const AuthProvider = ({ children }) => {
         // RESUME OFFLINE SOS SYNC + CONNECTIVITY MONITOR
         startConnectivityMonitor();
         initOfflineSos();
+        initOfflineSync(); // flush any evidence files stuck in the upload queue
       }
     } catch (e) {
       console.warn("Failed to load auth data", e);

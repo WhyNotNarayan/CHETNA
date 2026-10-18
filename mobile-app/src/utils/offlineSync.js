@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import api from './api';
+import { onConnectivityChange } from './networkService';
 
 const QUEUE_KEY_LOCATIONS = 'offline_sos_locations';
 const QUEUE_KEY_MEDIA = 'offline_sos_media';
@@ -135,6 +136,29 @@ export const attemptSync = async () => {
   } finally {
     syncInProgress = false;
   }
+};
+
+// ── Initialize ──────────────────────────────────────────────
+// Media is normally flushed from the SOS screen's 15s interval — but if the
+// app was killed (or the SOS screen closed) before a slow upload finished,
+// the file sat in the AsyncStorage queue FOREVER and was never retried.
+// Kick a flush at app start and whenever connectivity returns.
+let _initialized = false;
+
+export const initOfflineSync = () => {
+  if (_initialized) return;
+  _initialized = true;
+
+  setTimeout(() => attemptSync(), 3000);
+
+  try {
+    onConnectivityChange((online, wasOffline) => {
+      if (online && wasOffline) {
+        console.log('[OfflineSync] Network restored — flushing queued media');
+        setTimeout(() => attemptSync(), 1000);
+      }
+    });
+  } catch (e) {}
 };
 
 // Upload queued GPS coordinates
