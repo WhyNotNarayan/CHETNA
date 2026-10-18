@@ -214,9 +214,12 @@ export default function SOSTrackingScreen({ route, navigation }) {
         setIsRecording(true);
         isRecordingRef.current = true;
 
+        // 480p + bitrate cap come from CameraView PROPS (verified native:
+        // default is 1080p, recordAsync options ignore quality) — a 28s clip
+        // at 1080p was 65MB and the server rejected it (>50MB).
         const recPromise = cameraRef.current.recordAsync({
-          maxDuration: 28,
-          videoQuality: '480p',
+          maxDuration: 15,
+          maxFileSize: 20 * 1024 * 1024, // native hard stop — still saves the clip
         });
 
         if (!recPromise || typeof recPromise.then !== 'function') {
@@ -224,14 +227,14 @@ export default function SOSTrackingScreen({ route, navigation }) {
           throw new Error('Camera not ready (no recording promise)');
         }
 
-        // Soft stop at 28s + hard watchdog at 35s (Finalize must fire)
+        // Soft stop at 15s + hard watchdog at 22s (Finalize must fire)
         stopTimer = setTimeout(() => {
           try { cameraRef.current?.stopRecording(); } catch (e) {}
-        }, 28000);
+        }, 15000);
         const TIMEOUT = '__TIMEOUT__';
         video = await Promise.race([
           recPromise,
-          new Promise((res) => { watchdogTimer = setTimeout(() => res(TIMEOUT), 35000); }),
+          new Promise((res) => { watchdogTimer = setTimeout(() => res(TIMEOUT), 22000); }),
         ]);
         if (video === TIMEOUT) {
           video = null;
@@ -546,6 +549,8 @@ export default function SOSTrackingScreen({ route, navigation }) {
             style={styles.camera}
             facing="back"
             mode="video"
+            videoQuality="480p"
+            videoBitrate={1200000}
             onCameraReady={() => {
               console.log('[SOS] Camera Ready. Starting loop...');
               pushLog('📷 Camera ready');
@@ -601,7 +606,7 @@ export default function SOSTrackingScreen({ route, navigation }) {
         <View style={styles.infoCard}>
           <Text style={styles.infoTitle}>Privacy Protection</Text>
           <Text style={styles.infoText}>
-            Continuous 30s video clips are being saved to your private Evidence Vault.
+            Continuous 15-second video clips are being saved to your private Evidence Vault.
             Parents and responders can only see your location, not your recordings.
           </Text>
         </View>

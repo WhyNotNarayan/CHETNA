@@ -424,7 +424,7 @@ exports.trackSOS = async (req, res) => {
 
 // Shared validation for evidence uploads: UUID alertId, whitelisted type, alert exists
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX_EVIDENCE_BYTES = 50 * 1024 * 1024; // 50MB per file
+const MAX_EVIDENCE_BYTES = 100 * 1024 * 1024; // 100MB per file (safety net: quality can fall back above 480p)
 
 const validateEvidenceUpload = async (alertId, fileType) => {
   if (!UUID_RE.test(String(alertId || ''))) return 'Invalid alert id';
