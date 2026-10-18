@@ -52,7 +52,7 @@ exports.register = async (req, res) => {
         fullName,
         address,
         gender,
-        role: gender === 'BOY' ? 'BOY' : 'GIRL',
+        role: (gender === 'GIRL' || gender === 'FEMALE') ? 'GIRL' : 'BOY',
         contacts: guardian ? {
           create: {
             name: guardian.name,
