@@ -9,7 +9,7 @@ const COOLDOWN_MS = 30000;
 const CHECK_INTERVAL = 100;
 const MAX_SHAKE_COUNT = 8;
 
-export function useShakeDetection() {
+export function useShakeDetection(enabled = true) {
   const [isShaking, setIsShaking] = useState(false);
   const [isSupported, setIsSupported] = useState(true);
   const [lastShakeTime, setLastShakeTime] = useState(0);
@@ -17,6 +17,7 @@ export function useShakeDetection() {
   const lastShake = useRef(0);
   const shakeCount = useRef(0);
   const lastForceTime = useRef(0);
+  const shakeResetTimer = useRef(null);
 
   const triggerShake = useCallback(() => {
     const now = Date.now();
@@ -34,10 +35,25 @@ export function useShakeDetection() {
       Vibration.vibrate([0, 500, 200, 500]);
     } catch (e) {}
 
-    setTimeout(() => setIsShaking(false), 3000);
+    if (shakeResetTimer.current) clearTimeout(shakeResetTimer.current);
+    shakeResetTimer.current = setTimeout(() => setIsShaking(false), 3000);
   }, []);
 
   useEffect(() => {
+    // Girls-only: don't poll the sensor or vibrate for other roles
+    if (!enabled) {
+      if (subscription.current) {
+        subscription.current.remove();
+        subscription.current = null;
+      }
+      if (shakeResetTimer.current) {
+        clearTimeout(shakeResetTimer.current);
+        shakeResetTimer.current = null;
+      }
+      setIsShaking(false);
+      return undefined;
+    }
+
     let isActive = true;
 
     const startListening = async () => {
@@ -88,8 +104,12 @@ export function useShakeDetection() {
         subscription.current.remove();
         subscription.current = null;
       }
+      if (shakeResetTimer.current) {
+        clearTimeout(shakeResetTimer.current);
+        shakeResetTimer.current = null;
+      }
     };
-  }, [triggerShake]);
+  }, [triggerShake, enabled]);
 
   return {
     isShaking,

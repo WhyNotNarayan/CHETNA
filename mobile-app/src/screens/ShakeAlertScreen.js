@@ -22,13 +22,14 @@ export default function ShakeAlertScreen({ navigation, route }) {
   const [isSending, setIsSending] = useState(false);
   const [alertSent, setAlertSent] = useState(false);
   const timerRef = useRef(null);
+  const alertSentRef = useRef(false);
+  const emergencyRef = useRef(false);
 
   useEffect(() => {
     timerRef.current = setInterval(() => {
       setSecondsLeft((prev) => {
         if (prev <= 1) {
           clearInterval(timerRef.current);
-          sendParentOnlyAlert();
           return 0;
         }
         return prev - 1;
@@ -39,6 +40,14 @@ export default function ShakeAlertScreen({ navigation, route }) {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
+
+  // Timer ended → send parent-only awareness alert (exactly once)
+  useEffect(() => {
+    if (secondsLeft <= 0) {
+      sendParentOnlyAlert();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [secondsLeft]);
 
   const getCurrentLocation = async () => {
     try {
@@ -57,7 +66,8 @@ export default function ShakeAlertScreen({ navigation, route }) {
   };
 
   const sendParentOnlyAlert = async () => {
-    if (alertSent) return;
+    if (alertSentRef.current) return;
+    alertSentRef.current = true;
     setAlertSent(true);
 
     try {
@@ -102,6 +112,8 @@ export default function ShakeAlertScreen({ navigation, route }) {
   };
 
   const handleEmergency = async () => {
+    if (emergencyRef.current) return;
+    emergencyRef.current = true;
     if (timerRef.current) clearInterval(timerRef.current);
 
     try {
@@ -129,11 +141,14 @@ export default function ShakeAlertScreen({ navigation, route }) {
       }
 
       if (res.data.success) {
+        alertSentRef.current = true;
         setAlertSent(true);
         navigation.replace('SOSTracking', { alertId: res.data.alertId });
       }
     } catch (e) {
       Alert.alert('Error', 'Failed to trigger emergency alert.');
+    } finally {
+      emergencyRef.current = false;
     }
   };
 
@@ -202,7 +217,6 @@ export default function ShakeAlertScreen({ navigation, route }) {
             <TouchableOpacity
               style={styles.emergencyButton}
               onPress={handleEmergency}
-              disabled={alertSent}
             >
               <LinearGradient colors={['#CC0000', '#8B0000']} style={styles.emergencyGradient}>
                 <Ionicons name="alert-circle" size={24} color="#FFF" />

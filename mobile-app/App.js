@@ -33,7 +33,7 @@ const Stack = createStackNavigator();
 function AppNavigator({ navigationRef }) {
   const { userToken, userData, isLoading, hasCompletedOnboarding } = useContext(AuthContext);
   const { theme } = useContext(ThemeContext);
-  const { isShaking } = useShakeDetection();
+  const { isShaking } = useShakeDetection(userData?.role === 'GIRL');
 
   useEffect(() => {
     if (isShaking && navigationRef.current && userData?.role === 'GIRL') {
