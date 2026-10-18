@@ -81,13 +81,16 @@ function getLangVoice(lang) {
 
 const getKey = (zone) => {
   const type = zone.type || '';
-  const desc = (zone.warningMessage || zone.description || '').toLowerCase();
+  // Zones keep their content in `crimeType` — warningMessage/description are
+  // usually empty, so include it or every zone falls back to the generic line.
+  const desc = (zone.warningMessage || zone.description || zone.crimeType || '').toLowerCase();
+  // Severity order: sharp turn > deep water > animals > accident > pothole > low light
   if (type === 'SHARP_TURN' || desc.includes('sharp turn')) return 'SHARP_TURN';
-  if (type === 'DARK_AREA' || desc.includes('light')) return 'DARK_AREA';
-  if (type === 'ANIMAL_ZONE' || desc.includes('animal')) return 'ANIMAL_ZONE';
   if (type === 'DEEP_WATER' || desc.includes('water') || desc.includes('swim')) return 'DEEP_WATER';
-  if (desc.includes('pothole')) return 'POTHOLE';
+  if (type === 'ANIMAL_ZONE' || desc.includes('animal')) return 'ANIMAL_ZONE';
   if (type === 'ACCIDENT_ZONE' || desc.includes('accident')) return 'ACCIDENT_ZONE';
+  if (desc.includes('pothole')) return 'POTHOLE';
+  if (type === 'DARK_AREA' || desc.includes('light')) return 'DARK_AREA';
   if (type === 'CRIME') return 'CRIME';
   return type || 'DEFAULT';
 };
@@ -164,7 +167,8 @@ export function useSafetyMonitor(guardianTimer = null) {
           startTime: z.startTime,
           endTime: z.endTime,
           warningMessage: z.warningMessage || z.description,
-          type: z.type
+          type: z.type,
+          crimeType: z.crimeType
         }));
         zonesRef.current = apiZones;
         await saveRedZones(apiZones);
@@ -180,6 +184,8 @@ export function useSafetyMonitor(guardianTimer = null) {
     let activeZoneFound = null;
 
     for (const zone of zones) {
+      // Safe zones are never danger zones — must not voice "danger" warnings
+      if (zone.type === 'SAFE_ZONE') continue;
       // Skip zones outside their active hours (e.g., night-only crime zones)
       if (!isTimeInRange(zone.startTime, zone.endTime)) continue;
 

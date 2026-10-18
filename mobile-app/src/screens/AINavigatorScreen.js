@@ -72,6 +72,7 @@ const VOICE_ALERTS = {
   'DEEP_WATER': "Warning! Deep water area. Please swim safely or avoid entering.",
   'ACCIDENT_ZONE': "Warning! Accident-prone area ahead. Proceed with caution.",
   'CRIME': "Warning! Reported unsafe area ahead. Stay alert.",
+  'POTHOLE': "Warning! Pothole ahead. Drive carefully.",
   'DEFAULT': "Warning! You are approaching a high-risk area. Stay alert."
 };
 
@@ -105,15 +106,20 @@ function getLangVoice(lang) {
 
 function buildVoiceMsg(zone, lang) {
   const type = zone.type || '';
-  const desc = (zone.warningMessage || zone.description || '').toLowerCase();
+  // Production zones keep their content in `crimeType` ("Deep Water", "sharp
+  // turn" …) — warningMessage/description are usually empty, so match on it
+  // too, otherwise every zone speaks the generic CRIME line.
+  const desc = (zone.warningMessage || zone.description || zone.crimeType || '').toLowerCase();
 
   let key = type;
+  // Severity order: sharp turn > deep water > animals > accident > pothole > low light.
+  // (Multi-hazard zones like "Deep Water, No Lights" must not match `light` first.)
   if (type === 'SHARP_TURN' || desc.includes('sharp turn')) key = 'SHARP_TURN';
-  else if (type === 'DARK_AREA' || desc.includes('light')) key = 'DARK_AREA';
-  else if (type === 'ANIMAL_ZONE' || desc.includes('animal')) key = 'ANIMAL_ZONE';
   else if (type === 'DEEP_WATER' || desc.includes('water') || desc.includes('swim')) key = 'DEEP_WATER';
-  else if (desc.includes('pothole')) key = 'POTHOLE';
+  else if (type === 'ANIMAL_ZONE' || desc.includes('animal')) key = 'ANIMAL_ZONE';
   else if (type === 'ACCIDENT_ZONE' || desc.includes('accident')) key = 'ACCIDENT_ZONE';
+  else if (desc.includes('pothole')) key = 'POTHOLE';
+  else if (type === 'DARK_AREA' || desc.includes('light')) key = 'DARK_AREA';
   else if (type === 'CRIME') key = 'CRIME';
 
   if (lang === 'mr') {
@@ -145,6 +151,7 @@ export default function AINavigatorScreen({ route, navigation }) {
   const mapRef = useRef(null);
   const locationWatcher = useRef(null);
   const alertedZones = useRef(new Set());
+  const startNavRef = useRef(null);
 
   const [currentLocation, setCurrentLocation] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -183,8 +190,10 @@ export default function AINavigatorScreen({ route, navigation }) {
       name: `RESCUE: ${targetCoords.name}`
     };
     await selectDestination(dest, currentCoords);
-    // Auto-start for rescue
-    setTimeout(() => startNavigation(), 1500);
+    // Auto-start for rescue. MUST call through the ref — the closure captured
+    // here still had destination=null (state not committed yet), so the old
+    // `startNavigation()` no-op'd and rescue missions never announced/voiced.
+    setTimeout(() => { if (startNavRef.current) startNavRef.current(); }, 1500);
   };
 
   // 🎯 NEW: Debounced Live Search
@@ -276,6 +285,7 @@ export default function AINavigatorScreen({ route, navigation }) {
           const coords = route.geometry.coordinates.map(([lon, lat]) => ({ latitude: lat, longitude: lon }));
           let routeDangers = 0;
           dangerZones.forEach(zone => {
+            if (zone.type === 'SAFE_ZONE') return; // safe zone ≠ danger for route scoring
             if (!shouldAlert(zone)) return;
             const isOn = coords.some(pt => getDistance(pt.latitude, pt.longitude, zone.latitude, zone.longitude) <= (zone.radius || 300));
             if (isOn) routeDangers++;
@@ -322,12 +332,13 @@ export default function AINavigatorScreen({ route, navigation }) {
     alertedZones.current.clear();
     setIsNavigating(true);
     const welcome = lang === 'mr' ? `नेव्हिगेशन सुरू. ${destination.name} कडे जात आहे.` : lang === 'hi' ? `नेविगेशन शुरू। ${destination.name} की ओर जा रहे हैं।` : `Starting navigation to ${destination.name}.`;
+    Speech.stop();
     Speech.speak(welcome, { language: getLangVoice(lang) });
 
     locationWatcher.current = await Location.watchPositionAsync({ accuracy: Location.Accuracy.High, timeInterval: 3000, distanceInterval: 10 }, (loc) => {
       const pos = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
       setCurrentLocation(pos);
-      checkDanger(pos);
+      checkDangerRef.current && checkDangerRef.current(pos);
       mapRef.current?.animateToRegion({ ...pos, latitudeDelta: 0.01, longitudeDelta: 0.01 }, 500);
     });
   };
@@ -339,29 +350,58 @@ export default function AINavigatorScreen({ route, navigation }) {
     Speech.stop();
   };
 
+  // The location watcher is created once inside startNavigation and captures
+  // whatever checkDanger existed at that moment — keep a ref to the latest
+  // one so zone/language updates are never missed.
+  const checkDangerRef = useRef(null);
+
   const checkDanger = useCallback((pos) => {
+    const insideIds = new Set();
+
     dangerZones.forEach(zone => {
+      if (zone.type === 'SAFE_ZONE') return; // safe zones must never voice danger warnings
       const dist = getDistance(pos.latitude, pos.longitude, zone.latitude, zone.longitude);
-      if (dist <= (zone.radius || 300)) {
-        if (!alertedZones.current.has(zone.id) && shouldAlert(zone)) {
+      if (dist <= (zone.radius || 300) && shouldAlert(zone)) {
+        insideIds.add(zone.id);
+        if (!alertedZones.current.has(zone.id)) {
           alertedZones.current.add(zone.id);
           setActiveAlertZone(zone);
+          // Preempt anything still speaking (SafetyMonitor runs on the
+          // dashboard underneath and calls Speech.stop() on its own alerts)
+          Speech.stop();
           Speech.speak(buildVoiceMsg(zone, lang), { language: getLangVoice(lang) });
-          setTimeout(() => { setActiveAlertZone(null); alertedZones.current.delete(zone.id); }, 8000);
+          setTimeout(() => {
+            setActiveAlertZone(prev => (prev && prev.id === zone.id ? null : prev));
+          }, 8000);
         }
       }
     });
+
+    // Re-arm ONLY after actually leaving the zone. The old code cleared the
+    // alert after 8s regardless — so standing inside a zone re-spoke the
+    // warning every ~8-11 seconds forever.
+    for (const id of alertedZones.current) {
+      if (!insideIds.has(id)) alertedZones.current.delete(id);
+    }
   }, [dangerZones, lang]);
 
+  checkDangerRef.current = checkDanger;
+
   const getZoneColor = (zone) => {
+    // Outside the zone's active hours → dim grey so the map matches the
+    // voice behaviour (night-only zones look inactive during the day)
+    if (!shouldAlert(zone)) return '#6B7280';
     const type = (zone.crimeType || '').toLowerCase();
     if (type.includes('sharp')) return '#F59E0B'; // Sharp turns are cautionary (Orange)
-    
+
     const count = zone.caseCount || 0;
     if (count > 20) return '#EF4444'; // Red (Danger)
     if (count > 10) return '#F59E0B'; // Orange (Warning)
     return '#10B981'; // Dark Green (Low Risk)
   };
+
+  // Latest startNavigation for deferred callers (rescue auto-start)
+  startNavRef.current = startNavigation;
 
   return (
     <View style={styles.container}>
